@@ -1,0 +1,26 @@
+# Node modules
+node_modules/
+
+# Output directory
+dist/
+
+# dotenv environment variables
+.env
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS-specific files
+.DS_Store
+Thumbs.db
+
+# TypeScript cache
+*.tsbuildinfo
+
+# IDE settings
+.vscode/
+.idea/
+
+# Optional: if you use ts-node or ts-node-dev
+.cache/
