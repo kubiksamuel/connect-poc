@@ -3,12 +3,14 @@ import * as readline from "readline";
 import * as dotenv from "dotenv";
 import {
   functionSpecs,
-  sendMessageWarmup,
-  sendMessageContextual,
-  sendFollowUp,
+  generateWarmupMessage,
+  generateContextualMessage,
+  generateFollowUpMessage,
   archiveProspect,
   moveToStage1,
   setCurrentProspectId,
+  setStateActor,
+  classifyProspectResponse,
 } from "./functions";
 import { stage0AColdProspect } from "./stages/stage0A";
 import { createActor, SnapshotFrom } from "xstate";
@@ -25,13 +27,50 @@ const rl = readline.createInterface({
   output: process.stdout,
 });
 
+const TEMPERATURE = 0.2;
+
 // Initialize state machine and set global prospect ID
-const prospectId = "PROSPECT_" + Date.now();
+const prospectId = "PROSPECT_JOHN_DOE";
 setCurrentProspectId(prospectId);
 
 const actor = createActor(stage0AColdProspect, {
   input: { prospectId },
 }).start();
+
+// Set the actor reference for state transitions
+setStateActor(actor);
+
+// Listen for state changes and update system message
+actor.subscribe((state) => {
+  console.log(`\n🔄 State changed to: ${state.value}`);
+
+  // Update the system message when state changes
+  if (messages.length > 1) {
+    messages[1] = {
+      role: "system",
+      content: getCurrentStateInstructions(),
+    };
+  }
+});
+
+// Static system prompt that defines Steve's persona
+const STEVE_PERSONA = `You are Steve, an AI assistant helping salespeople manage their prospects. You are professional, focused, and excellent at understanding prospect responses and suggesting appropriate next steps.
+
+Your primary responsibilities are:
+1. Help salespeople interpret prospect responses and decide on next actions
+2. Generate messages for the salesperson to send to prospects
+3. Maintain a natural, professional conversation flow
+4. Guide prospects towards asking about the business while keeping engagement genuine
+
+You communicate clearly with salespeople about:
+- What state the prospect is in
+- What the next steps should be
+- Why you recommend certain actions
+
+You are direct and practical in your advice, but always maintain a helpful and supportive tone. 
+Before making any function calls, always first suggest the action in natural language.
+Never trigger function calls without a preceding suggestion message.
+Triiger appropiate function calls if user asks for it or if you think it is appropriate.`;
 
 // Helper to get state metadata
 function getStateMetadata(snapshot: SnapshotFrom<typeof stage0AColdProspect>) {
@@ -40,28 +79,45 @@ function getStateMetadata(snapshot: SnapshotFrom<typeof stage0AColdProspect>) {
   return stateNode?.meta ?? { prompt: "", allowedTools: [] as Tool[] };
 }
 
+// Helper to get the current state instructions
+function getCurrentStateInstructions() {
+  const state = actor.getSnapshot();
+  const { prompt, allowedTools } = getStateMetadata(state);
+
+  return `Current Prospect: ${prospectId} (John Doe)
+Current State: ${state.value}
+
+CURRENT INSTRUCTIONS:
+${prompt}
+
+${
+  state.value === "collectFeedback"
+    ? `
+CLASSIFICATION REQUIRED:
+When user tells you about the prospect's response, you must classify it using the classifyProspectResponse function with one of these classifications:
+- ASKED_ABOUT_BUSINESS: If they explicitly asked about your business/work
+- POSITIVE_OR_NEUTRAL: If they engaged positively but didn't ask about business
+- NO_RESPONSE: If there was no response from the prospect
+- NEGATIVE_RESPONSE: If they responded negatively
+`
+    : `
+ACTIONS AVAILABLE:
+The current state allows these tools: ${allowedTools.join(", ")}
+Use the appropriate tool based on the current state instructions.
+`
+}
+
+Please help user understand the current situation and take appropriate action based on the state instructions above.`;
+}
+
 let messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
   {
     role: "system",
-    content: `You are Steve, an AI assistant helping salespeople manage their prospects. You are currently in Stage 0A of the sales process, working with a cold prospect.
-
-Your goal is to help the salesperson navigate the conversation and make appropriate decisions based on the prospect's responses. You should:
-
-1. Help interpret the prospect's responses and classify them into one of these categories:
-   - Asked about business (shows clear interest)
-   - Positive/neutral response (engaged but not asking about business yet)
-   - No response (needs follow-up)
-   - Negative response (should be archived)
-
-2. Suggest appropriate next actions based on the state machine's current state and allowed tools.
-
-3. Provide context and advice to the salesperson about how to handle each situation.
-
-Current Prospect ID: ${prospectId}
-Current State: ${actor.getSnapshot().value}
-Allowed Tools: ${getStateMetadata(actor.getSnapshot()).allowedTools.join(", ")}
-
-Remember: The goal in Stage 0 is to establish a connection and guide the prospect to ask about what you do for work.`,
+    content: STEVE_PERSONA,
+  },
+  {
+    role: "system",
+    content: getCurrentStateInstructions(),
   },
 ];
 
@@ -98,21 +154,30 @@ async function handleToolCall(
   const args = JSON.parse(toolCall.function.arguments || "{}");
   let functionResponse: string;
 
+  console.log(
+    "Waiting for frontend to response to the tool call...: ",
+    JSON.stringify(toolCall.function)
+  );
+  await new Promise((resolve) => setTimeout(resolve, 6000));
+
   switch (toolCall.function.name) {
-    case "sendMessageWarmup":
-      functionResponse = sendMessageWarmup();
+    case "generateWarmupMessage":
+      functionResponse = generateWarmupMessage();
       break;
-    case "sendMessageContextual":
-      functionResponse = sendMessageContextual(args);
+    case "generateContextualMessage":
+      functionResponse = generateContextualMessage();
       break;
-    case "sendFollowUp":
-      functionResponse = sendFollowUp();
+    case "generateFollowUpMessage":
+      functionResponse = generateFollowUpMessage();
       break;
     case "archiveProspect":
       functionResponse = archiveProspect();
       break;
     case "moveToStage1":
       functionResponse = moveToStage1();
+      break;
+    case "classifyProspectResponse":
+      functionResponse = classifyProspectResponse(args);
       break;
     default:
       console.log(`Unknown function: ${toolCall.function.name}`);
@@ -134,6 +199,7 @@ async function handleToolCall(
     model: "gpt-4o-mini",
     messages: [...messages, ...result.messages],
     stream: true,
+    temperature: TEMPERATURE,
   });
 
   const followUpContent = await handleStream(followUpStream);
@@ -183,8 +249,13 @@ async function processStreamResponse(
 
 async function startChat() {
   const state = actor.getSnapshot();
-  const currentState = state.value as string;
   const { allowedTools } = getStateMetadata(state);
+
+  // Use the tools defined by the state machine
+  const availableTools = allowedTools;
+
+  console.log(`\nCurrent State: ${state.value}`);
+  console.log(`Available Tools: ${availableTools.join(", ")}`);
 
   rl.question("You: ", async (input) => {
     if (input.toLowerCase() === "exit") {
@@ -202,9 +273,10 @@ async function startChat() {
           type: "function" as const,
           function: spec,
         }))
-        .filter((tool) => allowedTools.includes(tool.function.name)),
-      tool_choice: "auto",
+        .filter((tool) => availableTools.includes(tool.function.name)),
+      tool_choice: availableTools.length > 0 ? "auto" : "none",
       stream: true,
+      temperature: TEMPERATURE,
     });
 
     const { accumulatedContent, toolCall } = await processStreamResponse(
@@ -226,12 +298,10 @@ async function startChat() {
 console.log(
   "Start chatting with Steve, your sales assistant! (Type 'exit' to quit)"
 );
-console.log(`Current State: ${actor.getSnapshot().value}`);
-console.log(
-  `Allowed Tools: ${getStateMetadata(actor.getSnapshot()).allowedTools.join(
-    ", "
-  )}`
-);
+console.log(`Initial State: ${actor.getSnapshot().value}`);
+const { prompt, allowedTools } = getStateMetadata(actor.getSnapshot());
+console.log(`State Instructions: ${prompt}`);
+console.log(`Available Tools: ${allowedTools.join(", ")}`);
 startChat();
 
 rl.on("close", () => {

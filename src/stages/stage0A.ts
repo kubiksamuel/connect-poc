@@ -2,29 +2,14 @@
 import { setup, assign } from "xstate";
 
 /*─────────────────────────────────────────────────────────────*/
-/*  Helper types & placeholder side-effects                    */
+/*  Helper types                                               */
 export type Tool =
-  | "sendMessageWarmup"
-  | "sendMessageContextual"
-  | "sendFollowUp"
+  | "generateWarmupMessage"
+  | "generateContextualMessage"
+  | "generateFollowUpMessage"
   | "archiveProspect"
-  | "moveToStage1";
-
-const sendMessageWarmup = () => {
-  console.log("STATE MACHINE ACTION:Sending warm-up message");
-};
-const sendMessageContextual = () => {
-  console.log("STATE MACHINE ACTION:Sending contextual message");
-};
-const sendFollowUp = () => {
-  console.log("STATE MACHINE ACTION:Sending follow-up message");
-};
-const archiveProspect = () => {
-  console.log("STATE MACHINE ACTION:Archiving prospect");
-};
-const moveToStage1 = () => {
-  console.log("STATE MACHINE ACTION:Moving to stage 1");
-};
+  | "moveToStage1"
+  | "classifyProspectResponse";
 
 /*─────────────────────────────────────────────────────────────*/
 /*  Context & Events                                           */
@@ -37,7 +22,8 @@ type Evt =
   | { type: "ASKED_ABOUT_BUSINESS" }
   | { type: "POSITIVE_OR_NEUTRAL" }
   | { type: "NO_RESPONSE" }
-  | { type: "NEGATIVE_RESPONSE" };
+  | { type: "NEGATIVE_RESPONSE" }
+  | { type: "MESSAGE_GENERATED" };
 
 /*─────────────────────────────────────────────────────────────*/
 /*  Machine definition using XState v5 `setup()`               */
@@ -54,11 +40,6 @@ export const stage0AColdProspect = setup({
 
   /** 🔧  Implementation (actions, guards) */
   actions: {
-    sendMessageWarmup,
-    sendMessageContextual,
-    sendFollowUp,
-    archiveProspect,
-    moveToStage1,
     incTries: assign({
       followUpTries: ({ context }) => context.followUpTries + 1,
     }),
@@ -69,7 +50,7 @@ export const stage0AColdProspect = setup({
   },
 }).createMachine({
   id: "stage0AColdProspect",
-  initial: "sendWarmup",
+  initial: "generateWarmup",
 
   context: {
     prospectId: "<<set-by-caller>>",
@@ -77,13 +58,15 @@ export const stage0AColdProspect = setup({
   },
 
   states: {
-    /* 1️⃣  Send first warm-up ping */
-    sendWarmup: {
-      entry: { type: "sendMessageWarmup" },
-      always: { target: "collectFeedback" },
+    /* 1️⃣  Generate first warm-up message */
+    generateWarmup: {
+      on: {
+        MESSAGE_GENERATED: { target: "collectFeedback" },
+      },
       meta: {
-        prompt: "Send a pre-written warm-up message and wait.",
-        allowedTools: ["sendMessageWarmup"],
+        prompt:
+          "You must use the generateWarmupMessage function to create a message for the prospect. Do not provide message suggestions in your response - only use the function call.",
+        allowedTools: ["generateWarmupMessage"],
       },
     },
 
@@ -91,63 +74,58 @@ export const stage0AColdProspect = setup({
     collectFeedback: {
       on: {
         ASKED_ABOUT_BUSINESS: { target: "moveToStage1" },
-        POSITIVE_OR_NEUTRAL: { target: "sendContextual" },
-        NO_RESPONSE: { target: "followUp" },
+        POSITIVE_OR_NEUTRAL: { target: "generateContextual" },
+        NO_RESPONSE: { target: "generateFollowUp" },
         NEGATIVE_RESPONSE: { target: "archive" },
       },
       meta: {
         prompt:
-          "Evaluate the reply.\n• Asked what you do → Stage 1.\n• Positive/neutral → contextual reply.\n• Silence → follow-up.\n• Negative → archive.",
-        allowedTools: [],
+          "You must use the classifyProspectResponse function to analyze the prospect's response. Do not provide analysis in your chat response - only use the function call to classify their response type.",
+        allowedTools: ["classifyProspectResponse"],
       },
     },
 
-    /* 2b  Contextual reply, then loop */
-    sendContextual: {
-      entry: { type: "sendMessageContextual" },
-      always: { target: "collectFeedback" },
+    /* 2b  Generate contextual message, then loop */
+    generateContextual: {
+      on: {
+        MESSAGE_GENERATED: { target: "collectFeedback" },
+      },
       meta: {
         prompt:
-          "Send a friendly, contextual message nudging them to ask about your work.",
-        allowedTools: ["sendMessageContextual"],
+          "You must use the generateContextualMessage function to create a contextual message. Do not provide message suggestions in your response - only use the function call.",
+        allowedTools: ["generateContextualMessage"],
       },
     },
 
-    /* 3️⃣  Follow-up (max 3) */
-    followUp: {
-      entry: [{ type: "sendFollowUp" }, { type: "incTries" }],
-      always: [
-        {
-          target: "collectFeedback",
-          guard: {
-            type: "hasMoreFollowUps",
-          },
-        },
-        { target: "archive" },
-      ],
+    /* 3️⃣  Generate follow-up (max 3) */
+    generateFollowUp: {
+      entry: { type: "incTries" },
+      on: {
+        MESSAGE_GENERATED: { target: "collectFeedback" },
+      },
       meta: {
         prompt:
-          "No reply yet – send follow-up #{{context.followUpTries}} (max 3).",
-        allowedTools: ["sendFollowUp"],
+          "You must use the generateFollowUpMessage function to create a follow-up message. Do not provide message suggestions in your response - only use the function call.",
+        allowedTools: ["generateFollowUpMessage"],
       },
     },
 
     /* 4️⃣  Success → pass control to Stage 1 */
     moveToStage1: {
-      entry: { type: "moveToStage1" },
       type: "final",
       meta: {
-        prompt: "Prospect asked about business – move to Stage 1.",
+        prompt:
+          "You must use the moveToStage1 function to transition the prospect to Stage 1. Do not provide explanations in your response - only use the function call.",
         allowedTools: ["moveToStage1"],
       },
     },
 
     /* 5️⃣  Archive path */
     archive: {
-      entry: { type: "archiveProspect" },
       type: "final",
       meta: {
-        prompt: "Prospect negative or silent after 3 follow-ups – archive.",
+        prompt:
+          "You must use the archiveProspect function to archive the prospect. Do not provide explanations in your response - only use the function call.",
         allowedTools: ["archiveProspect"],
       },
     },
