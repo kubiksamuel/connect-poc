@@ -1,3 +1,6 @@
+import { sendRequestToOpenAi } from "./openAiRequest";
+import { MAX_FOLLOW_UP_ATTEMPTS, prospectData } from "./prospectData";
+
 // Global prospect ID that will be set when chat starts
 export let CURRENT_PROSPECT_ID: string = "";
 
@@ -16,82 +19,115 @@ export type MessageResponse = {
   message?: string;
 };
 
-export function generateWarmupMessage(): string {
-  // In a real implementation, this would generate a pre-written warm-up message for the user to send
-  console.log("FUNCTION_CALL: Generating warm-up message");
+export async function generateWarmupMessage(): Promise<string> {
+  console.log("FUNCTION_CALL: Generating warmup message");
 
-  const warmupMessage = `Hi John! I came across your profile and was impressed by your work in [industry]. I'd love to connect and learn more about what you're working on. Best regards!`;
+  const messages = [
+    {
+      role: "system" as const,
+      content: `You are a sales message expert.
+       Generate a personalized, professional warm-up message for cold outreach.
+       Prospect data: ${JSON.stringify(prospectData)}
+       Generate only message, no other text.`,
+    },
+  ];
+
+  const warmupMessage = await sendRequestToOpenAi(messages);
 
   // After generating warmup message, transition to collectFeedback
   if (stateActor) {
-    // Add a small delay to ensure the message is processed first
-    setTimeout(() => {
-      console.log(
-        "🔄 Transitioning to collectFeedback after warmup message generated"
-      );
-      // We need to add a custom event for this transition
-      stateActor.send({ type: "MESSAGE_GENERATED" });
-    }, 100);
+    stateActor.send({ type: "MESSAGE_GENERATED" });
   }
 
-  return "Warm up message was generated successfully.";
-  // return `Generated warm-up message for prospect ${CURRENT_PROSPECT_ID}:\n\n"${warmupMessage}"\n\nPlease send this message to the prospect.`;
+  console.log(
+    "#FRONTEND: Warm up message generated:",
+    warmupMessage,
+    "END #FRONTEND"
+  );
+
+  return warmupMessage;
 }
 
-export function generateContextualMessage(): string {
+export async function generateContextualMessage(): Promise<string> {
   // In a real implementation, this would generate a contextual message to nudge the prospect
   console.log("FUNCTION_CALL: Generating contextual message");
 
-  const contextualMessage = `That's awesome! I've been working on some interesting projects in [related area]. What's been keeping you busy lately?`;
+  const messages = [
+    {
+      role: "system" as const,
+      content: `You are a sales message expert.
+       Generate a personalized, professional contextual message for cold outreach.
+       Prospect data: ${JSON.stringify(prospectData)}
+       Generate only message, no other text.`,
+    },
+  ];
+
+  const contextualMessage = await sendRequestToOpenAi(messages);
 
   // After generating contextual message, transition back to collectFeedback
   if (stateActor) {
-    setTimeout(() => {
-      console.log(
-        "🔄 Transitioning to collectFeedback after contextual message generated"
-      );
-      stateActor.send({ type: "MESSAGE_GENERATED" });
-    }, 100);
+    stateActor.send({ type: "MESSAGE_GENERATED" });
   }
 
-  // return `Generated contextual message for prospect ${CURRENT_PROSPECT_ID}:\n\n"${contextualMessage}"\n\nPlease send this message to the prospect.`;
-  return "Contextual message was generated successfully.";
+  console.log(
+    "#FRONTEND: Contextual message generated:",
+    contextualMessage,
+    "END #FRONTEND"
+  );
+
+  return contextualMessage;
 }
 
 export function generateFollowUpMessage(): string {
   // In a real implementation, this would generate a follow-up message
   console.log("FUNCTION_CALL: Generating follow-up message");
 
-  const followUpMessage = `Hi again! Just wanted to follow up on my previous message. Hope you're doing well!`;
-
-  // After generating follow-up message, check if we should continue or archive
+  // Check if we've reached the maximum follow-up attempts
   if (stateActor) {
-    setTimeout(() => {
-      const currentState = stateActor.getSnapshot();
-      const followUpTries = currentState.context.followUpTries;
+    const currentState = stateActor.getSnapshot();
+    const followUpTries = currentState.context.followUpTries;
 
-      console.log(`🔄 Follow-up tries: ${followUpTries}/3`);
+    console.log(`Current follow-up tries: ${followUpTries}`);
 
-      if (followUpTries < 3) {
-        console.log(
-          "🔄 Transitioning to collectFeedback after follow-up message generated"
-        );
-        stateActor.send({ type: "MESSAGE_GENERATED" });
-      } else {
-        console.log("🔄 Max follow-ups reached, archiving prospect");
-        // Archive the prospect after max follow-ups
-        archiveProspect();
-      }
-    }, 100);
+    // If we've reached 3 follow-ups, don't generate another message
+    // if (followUpTries >= 3) {
+    //   console.log("🔄 Maximum follow-ups reached - transitioning to archive");
+    //   stateActor.send({ type: "MESSAGE_GENERATED" });
+    //   return "Maximum follow-up attempts reached. This prospect should be archived due to lack of response.";
+    // }
   }
 
-  // return `Generated follow-up message for prospect ${CURRENT_PROSPECT_ID}:\n\n"${followUpMessage}"\n\nPlease send this message to the prospect.`;
-  return "Follow-up message was generated successfully.";
+  const followUpMessage = `Hi again! Just wanted to follow up on my previous message. Hope you're doing well!`;
+
+  // After generating follow-up message, let the state machine decide next step based on follow-up count
+  if (stateActor) {
+    // setTimeout(() => {
+    console.log(
+      "🔄 Triggering MESSAGE_GENERATED - state machine will decide next step based on follow-up count"
+    );
+    stateActor.send({ type: "MESSAGE_GENERATED" });
+    // }, 100);
+  }
+
+  return followUpMessage;
+  //   return `I've generated a follow-up message for John:
+
+  // "${followUpMessage}"
+
+  // This is a gentle follow-up that:
+  // - Maintains a friendly tone
+  // - Shows continued interest
+  // - Doesn't pressure the prospect
+
+  // You can send this message to John. The system will automatically handle whether to continue with more follow-ups or archive based on response patterns.`;
 }
 
 export function archiveProspect(): string {
   // In a real implementation, this would archive the prospect in the CRM
   console.log("FUNCTION_CALL: Archiving prospect");
+  if (stateActor) {
+    stateActor.send({ type: "PROSPECT_ARCHIVED" });
+  }
 
   // This is a final action - no state transition needed
   return `Archived prospect ${CURRENT_PROSPECT_ID}. This prospect has been marked as unresponsive and removed from active outreach.`;
@@ -101,12 +137,34 @@ export function moveToStage1(): string {
   // In a real implementation, this would move the prospect to Stage 1 in the CRM
   console.log("FUNCTION_CALL: Moving to stage 1");
 
+  if (stateActor) {
+    stateActor.send({ type: "STAGE_1_REACHED" });
+  }
+
   // This is a final action - no state transition needed
   return `Moved prospect ${CURRENT_PROSPECT_ID} to Stage 1. The prospect has shown interest and is ready for deeper business discussions.`;
 }
 
+export function collectFeedback(feedback?: string): string {
+  // In a real implementation, this would trigger a modal on the frontend to collect prospect's feedback
+  console.log("FUNCTION_CALL: Triggering feedback collection modal");
+
+  if (!feedback) {
+    return "Error: No feedback provided";
+  }
+
+  console.log("🔄 Feedback received:", feedback);
+
+  // Don't automatically transition - let the AI call classifyFeedback next
+  // The AI will handle the classification based on the feedback
+
+  return `Feedback collected: "${feedback}"
+
+I've received the prospect's response. Now I need to classify it to determine the next steps. Let me analyze this response and classify it appropriately.`;
+}
+
 // Response classification function that triggers state transitions
-export function classifyProspectResponse(params: {
+export function classifyFeedback(params: {
   classification:
     | "ASKED_ABOUT_BUSINESS"
     | "POSITIVE_OR_NEUTRAL"
@@ -116,23 +174,45 @@ export function classifyProspectResponse(params: {
   if (!stateActor) {
     return "Error: State machine not initialized";
   }
+  console.log("FUNCTION_CALL: Classifying feedback");
 
   const { classification } = params;
 
-  stateActor.send({ type: classification });
-
+  let response = "";
   switch (classification) {
     case "ASKED_ABOUT_BUSINESS":
-      return "Prospect showed interest in business - transitioning to Stage 1";
+      response =
+        "Prospect showed interest in business - transitioning to Stage 1";
+      break;
     case "POSITIVE_OR_NEUTRAL":
-      return "Prospect responded positively - transitioning to generate contextual message";
+      response =
+        "Prospect responded positively - transitioning to generate contextual message";
+      break;
     case "NO_RESPONSE":
-      return "No response from prospect - transitioning to generate follow-up";
+      if (stateActor) {
+        const currentState = stateActor.getSnapshot();
+        const followUpTries = currentState.context.followUpTries;
+        console.log("Follow up tries:", followUpTries);
+        console.log("Max follow up attempts:", MAX_FOLLOW_UP_ATTEMPTS);
+        if (followUpTries < MAX_FOLLOW_UP_ATTEMPTS) {
+          response =
+            "No response from prospect - let's generate another follow-up";
+          break;
+        } else {
+          response = "No response from prospect - let's archive prospect";
+          break;
+        }
+      }
     case "NEGATIVE_RESPONSE":
-      return "Prospect responded negatively - transitioning to archive";
+      response = "Prospect responded negatively - transitioning to archive";
+      break;
     default:
-      return "Invalid classification type";
+      response = "Invalid classification type";
   }
+
+  stateActor.send({ type: classification });
+
+  return response;
 }
 
 export const functionSpecs = [
@@ -190,7 +270,17 @@ export const functionSpecs = [
     },
   },
   {
-    name: "classifyProspectResponse",
+    name: "collectFeedback",
+    description:
+      "Triggers the UI to collect the prospect's reply. A modal will open where the salesperson can paste or dictate the message. You must call this function when you're ready to receive feedback.",
+    parameters: {
+      type: "object",
+      properties: {},
+      required: [],
+    },
+  },
+  {
+    name: "classifyFeedback",
     description:
       "Classify the prospect's response to determine the next action in the sales process.",
     parameters: {
@@ -204,8 +294,11 @@ export const functionSpecs = [
             "NO_RESPONSE",
             "NEGATIVE_RESPONSE",
           ],
-          description:
-            "The classification of the prospect's response: ASKED_ABOUT_BUSINESS (they asked about your business/work), POSITIVE_OR_NEUTRAL (engaged positively but didn't ask about business), NO_RESPONSE (no response from prospect), NEGATIVE_RESPONSE (negative response)",
+          description: `The classification of the prospect's response:
+           - ASKED_ABOUT_BUSINESS: They asked about your business/work/what you do
+           - POSITIVE_OR_NEUTRAL: Engaged positively but didn't ask about business yet
+           - NO_RESPONSE: No response from prospect
+           - NEGATIVE_RESPONSE: Clearly negative or uninterested response`,
         },
       },
       required: ["classification"],

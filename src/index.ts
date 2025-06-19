@@ -1,33 +1,28 @@
 import { OpenAI } from "openai";
 import * as readline from "readline";
-import * as dotenv from "dotenv";
 import {
   functionSpecs,
   generateWarmupMessage,
   generateContextualMessage,
   generateFollowUpMessage,
+  collectFeedback,
+  classifyFeedback,
   archiveProspect,
   moveToStage1,
   setCurrentProspectId,
   setStateActor,
-  classifyProspectResponse,
 } from "./functions";
 import { stage0AColdProspect } from "./stages/stage0A";
 import { createActor, SnapshotFrom } from "xstate";
-import { Tool } from "./stages/stage0A";
-
-dotenv.config();
-
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY!,
-});
+import { Tool } from "./stages/stage0A.types";
+import { openaiClient } from "./openAIClient";
 
 const rl = readline.createInterface({
   input: process.stdin,
   output: process.stdout,
 });
 
-const TEMPERATURE = 0.2;
+const TEMPERATURE = 0.8;
 
 // Initialize state machine and set global prospect ID
 const prospectId = "PROSPECT_JOHN_DOE";
@@ -53,24 +48,54 @@ actor.subscribe((state) => {
   }
 });
 
+// - Don't call functions immediately - have a conversation first
 // Static system prompt that defines Steve's persona
-const STEVE_PERSONA = `You are Steve, an AI assistant helping salespeople manage their prospects. You are professional, focused, and excellent at understanding prospect responses and suggesting appropriate next steps.
+const STEVE_PERSONA = `You are Steve, a professional sales assistant who helps salespeople convert prospects.
 
-Your primary responsibilities are:
-1. Help salespeople interpret prospect responses and decide on next actions
-2. Generate messages for the salesperson to send to prospects
-3. Maintain a natural, professional conversation flow
-4. Guide prospects towards asking about the business while keeping engagement genuine
+Your role is to:
+- Help generate effective messages to send to prospects
+- Analyze prospect responses to understand their level of interest
+- Provide strategic advice on next steps in the sales process
+- Guide the salesperson through proven sales methodologies
 
-You communicate clearly with salespeople about:
-- What state the prospect is in
-- What the next steps should be
-- Why you recommend certain actions
+You communicate in a natural, conversational way. You're helpful, strategic, and focused on results.
 
-You are direct and practical in your advice, but always maintain a helpful and supportive tone. 
-Before making any function calls, always first suggest the action in natural language.
-Never trigger function calls without a preceding suggestion message.
-Triiger appropiate function calls if user asks for it or if you think it is appropriate.`;
+CRITICAL PROACTIVE BEHAVIOR:
+- You should ALWAYS propose the next step based on the current state instructions
+- Don't wait for the user to ask - actively guide them through the sales process
+- When you greet the user or respond to their messages, immediately suggest what they should do next based on the current state
+- Be specific about what action they should take and offer to help execute it
+
+CRITICAL FUNCTION CALLING BEHAVIOR:
+- When a user indicates they want to perform an action that has a corresponding function available, you MUST call that function IMMEDIATELY
+- FEEDBACK COLLECTION PROCESS (2 steps):
+  1. When the user mentions the prospect responded/replied/answered, you MUST call collectFeedback to open the modal
+  2. After the modal opens and user provides the feedback details, you MUST call classifyFeedback with the appropriate classification
+- If the user asks you to generate/create a message, you MUST call the appropriate generation function RIGHT AWAY
+- If the user wants to move to next stage or archive, you MUST call those functions IMMEDIATELY
+- Don't just talk about what you could do - actually do it by calling the function
+- You can have brief conversation, but when it's time for action, always use the available functions
+
+FUNCTION CALLING PROTOCOL:
+1. When you suggest doing something that requires a function call, ALWAYS follow this pattern:
+   - Make a brief introduction: "Let me generate that message for you now."
+   - IMMEDIATELY call the function (don't wait for permission)
+2. If the action might be disruptive or the user might want to provide input first, ask for confirmation:
+   - "Would you like me to generate a warm-up message for this prospect?"
+   - Wait for confirmation, then call the function
+
+Examples of IMMEDIATE function calls (no permission needed):
+- User: "John responded" → Say "Let me collect that feedback" → CALL collectFeedback
+- User: "Let's create a message" → Say "I'll generate that message now" → CALL appropriate function
+- User: "Generate a warm-up" → Say "Creating a warm-up message now" → CALL generateWarmupMessage
+
+Examples of ASK FIRST (when user input might be needed):
+- When proactively suggesting: "Would you like me to generate a warm-up message?"
+- When the request is ambiguous: "What type of message would you like me to generate?"
+
+The user shouldn't see technical function names or state IDs - use natural language descriptions.
+
+You are direct and practical in your advice, but always maintain a helpful and supportive tone.`;
 
 // Helper to get state metadata
 function getStateMetadata(snapshot: SnapshotFrom<typeof stage0AColdProspect>) {
@@ -82,32 +107,31 @@ function getStateMetadata(snapshot: SnapshotFrom<typeof stage0AColdProspect>) {
 // Helper to get the current state instructions
 function getCurrentStateInstructions() {
   const state = actor.getSnapshot();
-  const { prompt, allowedTools } = getStateMetadata(state);
+  const { prompt } = getStateMetadata(state);
 
-  return `Current Prospect: ${prospectId} (John Doe)
-Current State: ${state.value}
+  // Provide natural context based on current state
+  switch (state.value) {
+    case "generateWarmup":
+      return "CURRENT STATE: Starting with a new cold prospect. NEXT STEP: You should immediately suggest creating a warm-up message for the prospect. Offer to generate one by calling the generateWarmupMessage function. Be proactive - don't wait for them to ask!";
 
-CURRENT INSTRUCTIONS:
-${prompt}
+    case "collectFeedback":
+      return "CURRENT STATE: A message has been sent to the prospect. NEXT STEP: You should ask if the prospect has responded yet. When the user mentions the prospect responded/replied/answered, you MUST call the collectFeedback function to collect their actual feedback, then call classifyFeedback to determine the next action.";
 
-${
-  state.value === "collectFeedback"
-    ? `
-CLASSIFICATION REQUIRED:
-When user tells you about the prospect's response, you must classify it using the classifyProspectResponse function with one of these classifications:
-- ASKED_ABOUT_BUSINESS: If they explicitly asked about your business/work
-- POSITIVE_OR_NEUTRAL: If they engaged positively but didn't ask about business
-- NO_RESPONSE: If there was no response from the prospect
-- NEGATIVE_RESPONSE: If they responded negatively
-`
-    : `
-ACTIONS AVAILABLE:
-The current state allows these tools: ${allowedTools.join(", ")}
-Use the appropriate tool based on the current state instructions.
-`
-}
+    case "generateContextual":
+      return "CURRENT STATE: The prospect responded positively but didn't ask about the business yet. NEXT STEP: You should suggest creating a contextual message to keep them engaged. Offer to generate one by calling the generateContextualMessage function.";
 
-Please help user understand the current situation and take appropriate action based on the state instructions above.`;
+    case "generateFollowUp":
+      return "CURRENT STATE: The prospect hasn't responded to the previous message. NEXT STEP: You should suggest creating a follow-up message. Offer to generate one by calling the generateFollowUpMessage function.";
+
+    case "moveToStage1":
+      return "CURRENT STATE: Great news! The prospect has shown interest in the business. NEXT STEP: You should immediately move them to Stage 1 by calling the moveToStage1 function.";
+
+    case "archive":
+      return "CURRENT STATE: This prospect isn't responding positively or has been unresponsive. NEXT STEP: You should archive them by calling the archiveProspect function.";
+
+    default:
+      return prompt;
+  }
 }
 
 let messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
@@ -155,29 +179,54 @@ async function handleToolCall(
   let functionResponse: string;
 
   console.log(
-    "Waiting for frontend to response to the tool call...: ",
+    "(Optional) Waiting for frontend to response to the tool call...: ",
     JSON.stringify(toolCall.function)
   );
   await new Promise((resolve) => setTimeout(resolve, 6000));
 
   switch (toolCall.function.name) {
     case "generateWarmupMessage":
-      functionResponse = generateWarmupMessage();
+      functionResponse = await generateWarmupMessage();
       break;
     case "generateContextualMessage":
-      functionResponse = generateContextualMessage();
+      functionResponse = await generateContextualMessage();
       break;
     case "generateFollowUpMessage":
       functionResponse = generateFollowUpMessage();
+      break;
+    case "collectFeedback":
+      // For testing purposes, simulate the frontend modal with console input
+      console.log("\n🔔 MODAL OPENED: Please enter the prospect's response:");
+
+      // Use a simpler approach with the existing readline interface
+      const feedbackInput = await new Promise<string>((resolve) => {
+        // Pause the main readline temporarily
+        rl.pause();
+
+        // Create a temporary readline for feedback input
+        const tempRL = readline.createInterface({
+          input: process.stdin,
+          output: process.stdout,
+        });
+
+        tempRL.question("Prospect's response: ", (input) => {
+          tempRL.close();
+          rl.resume(); // Resume the main readline
+          resolve(input);
+        });
+      });
+
+      // Pass the feedback directly to the function
+      functionResponse = collectFeedback(feedbackInput);
+      break;
+    case "classifyFeedback":
+      functionResponse = classifyFeedback(args);
       break;
     case "archiveProspect":
       functionResponse = archiveProspect();
       break;
     case "moveToStage1":
       functionResponse = moveToStage1();
-      break;
-    case "classifyProspectResponse":
-      functionResponse = classifyProspectResponse(args);
       break;
     default:
       console.log(`Unknown function: ${toolCall.function.name}`);
@@ -195,7 +244,7 @@ async function handleToolCall(
     content: functionResponse,
   });
 
-  const followUpStream = await openai.chat.completions.create({
+  const followUpStream = await openaiClient.chat.completions.create({
     model: "gpt-4o-mini",
     messages: [...messages, ...result.messages],
     stream: true,
@@ -217,6 +266,7 @@ async function processStreamResponse(
     | OpenAI.Chat.Completions.ChatCompletionMessageToolCall
     | undefined;
 
+  process.stdout.write("Steve: ");
   for await (const chunk of response) {
     const content = chunk.choices[0]?.delta?.content || "";
     const currentToolCall = chunk.choices[0]?.delta?.tool_calls?.[0];
@@ -265,7 +315,7 @@ async function startChat() {
 
     messages.push({ role: "user", content: input });
 
-    const response = await openai.chat.completions.create({
+    const response = await openaiClient.chat.completions.create({
       model: "gpt-4o-mini",
       messages,
       tools: functionSpecs
@@ -296,7 +346,7 @@ async function startChat() {
 }
 
 console.log(
-  "Start chatting with Steve, your sales assistant! (Type 'exit' to quit)"
+  "🚀 Welcome! Steve is ready to help you convert prospects. (Type 'exit' to quit)"
 );
 console.log(`Initial State: ${actor.getSnapshot().value}`);
 const { prompt, allowedTools } = getStateMetadata(actor.getSnapshot());
