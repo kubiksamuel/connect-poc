@@ -12,14 +12,6 @@ export const TOKEN_PRICES = {
     input: 2.5, // $2.50 per 1M input tokens
     output: 10.0, // $10.00 per 1M output tokens
   },
-  "gpt-4": {
-    input: 30.0, // $30.00 per 1M input tokens
-    output: 60.0, // $60.00 per 1M output tokens
-  },
-  "gpt-3.5-turbo": {
-    input: 0.5, // $0.50 per 1M input tokens
-    output: 1.5, // $1.50 per 1M output tokens
-  },
 } as const;
 
 export interface TokenUsage {
@@ -300,46 +292,5 @@ export function extractTokenUsage(
     promptTokens: response.usage.prompt_tokens,
     completionTokens: response.usage.completion_tokens,
     totalTokens: response.usage.total_tokens,
-  };
-}
-
-/**
- * Helper function to extract token usage from streaming response usage chunk
- * OpenAI now provides accurate usage data in streaming responses when stream_options.include_usage is true
- */
-export function extractStreamingTokenUsage(usageChunk: any): TokenUsage | null {
-  if (!usageChunk || !usageChunk.usage) {
-    return null;
-  }
-
-  return {
-    promptTokens: usageChunk.usage.prompt_tokens,
-    completionTokens: usageChunk.usage.completion_tokens,
-    totalTokens: usageChunk.usage.total_tokens,
-  };
-}
-
-/**
- * Helper function to track streaming responses (DEPRECATED - use extractStreamingTokenUsage instead)
- * Note: This is kept for backwards compatibility but should not be used
- */
-export function estimateTokenUsage(
-  inputText: string,
-  outputText: string,
-  model: string = "gpt-4o-mini"
-): TokenUsage {
-  // Rough estimation: ~4 characters per token for English text
-  // This is an approximation and may not be perfectly accurate
-  const estimatedInputTokens = Math.ceil(inputText.length / 4);
-  const estimatedOutputTokens = Math.ceil(outputText.length / 4);
-
-  console.log(
-    "⚠️ DEPRECATED: Using token estimation. Enable stream_options.include_usage for accurate tracking."
-  );
-
-  return {
-    promptTokens: estimatedInputTokens,
-    completionTokens: estimatedOutputTokens,
-    totalTokens: estimatedInputTokens + estimatedOutputTokens,
   };
 }

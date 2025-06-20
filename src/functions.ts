@@ -10,15 +10,8 @@ export enum ProspectResponseClassification {
   NEGATIVE_RESPONSE = "NEGATIVE_RESPONSE",
 }
 
-// Global prospect ID that will be set when chat starts
-export let CURRENT_PROSPECT_ID: string = "";
-
 // Global actor reference that will be set when chat starts
 export let stateActor: any = null;
-
-export function setCurrentProspectId(id: string) {
-  CURRENT_PROSPECT_ID = id;
-}
 
 export function setStateActor(actor: any) {
   stateActor = actor;
@@ -253,7 +246,7 @@ export function archiveProspect(): string {
   }
 
   // This is a final action - no state transition needed
-  return `Archived prospect ${CURRENT_PROSPECT_ID}. This prospect has been marked as unresponsive and removed from active outreach.`;
+  return `Prospect was archived. This prospect has been marked as unresponsive and removed from active outreach.`;
 }
 
 export function moveToStage1(): string {
@@ -263,7 +256,7 @@ export function moveToStage1(): string {
   }
 
   // This is a final action - no state transition needed
-  return `Moved prospect ${CURRENT_PROSPECT_ID} to Stage 1. The prospect has shown interest and is ready for deeper business discussions.`;
+  return `Prospect was moved to Stage 1. The prospect has shown interest and is ready for deeper business discussions.`;
 }
 
 export async function collectFeedback(feedback?: string): Promise<string> {

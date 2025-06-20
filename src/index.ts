@@ -14,18 +14,17 @@ import { stage0AColdProspect } from "./stages/stage0A";
 import { createActor, SnapshotFrom } from "xstate";
 import { Tool } from "./stages/stage0A.types";
 import { openaiClient } from "./openAIClient";
-import { getProspectContext } from "./prospectData";
+import { getProspectContext, prospectData } from "./prospectData";
 import { rl } from "./terminal";
-import { tokenTracker, extractStreamingTokenUsage } from "./tokenTracker";
+import { tokenTracker } from "./tokenTracker";
 
 export const TEMPERATURE = 0.8;
 
 // Initialize state machine and set global prospect ID
-const prospectId = "PROSPECT_JOHN_DOE";
-setCurrentProspectId(prospectId);
+setCurrentProspectId(prospectData.id);
 
 const actor = createActor(stage0AColdProspect, {
-  input: { prospectId },
+  input: { prospectId: prospectData.id },
 }).start();
 
 // Set the actor reference for state transitions
