@@ -21,6 +21,9 @@ export const stage0AColdProspect = setup({
     incTries: assign({
       followUpTries: ({ context }) => context.followUpTries + 1,
     }),
+    resetTries: assign({
+      followUpTries: 0,
+    }),
   },
 
   guards: {
@@ -53,7 +56,10 @@ export const stage0AColdProspect = setup({
     collectFeedback: {
       on: {
         ASKED_ABOUT_BUSINESS: { target: "moveToStage1" },
-        POSITIVE_OR_NEUTRAL: { target: "generateContextual" },
+        POSITIVE_OR_NEUTRAL: {
+          target: "generateContextual",
+          actions: { type: "resetTries" },
+        },
         NO_RESPONSE: [
           {
             target: "generateFollowUp",
