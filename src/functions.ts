@@ -302,12 +302,7 @@ export const functionSpecs = [
       "Generate a contextual message based on previous interaction for the user to send.",
     parameters: {
       type: "object",
-      properties: {
-        message: {
-          type: "string",
-          description: "The contextual message content to generate",
-        },
-      },
+      properties: {},
       required: [],
     },
   },
@@ -347,12 +342,13 @@ export const functionSpecs = [
       type: "object",
       properties: {
         feedback: {
-          type: "string",
+          type: ["string", "null"],
           description:
-            "The prospect's response/reply that the user mentioned in the chat. Only include this if the user has clearly stated what the prospect said/wrote back.",
+            "The prospect's response/reply that the user mentioned in the chat. Only include this if the user has clearly stated what the prospect said/wrote back, otherwise set it to null.",
         },
       },
-      required: [],
+      required: ["feedback"],
+      strict: true,
     },
   },
 ];
