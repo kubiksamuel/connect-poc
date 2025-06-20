@@ -2,7 +2,6 @@
 import { setup, assign } from "xstate";
 import { Ctx, Evt, Tool } from "./stage0A.types";
 import { MAX_FOLLOW_UP_ATTEMPTS } from "../prospectData";
-import { ProspectResponseClassification } from "../functions";
 
 /*─────────────────────────────────────────────────────────────*/
 /*  Machine definition using XState v5 `setup()`               */
