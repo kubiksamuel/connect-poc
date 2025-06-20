@@ -1,6 +1,6 @@
 import { sendRequestToOpenAi } from "./openAiRequest";
 import { MAX_FOLLOW_UP_ATTEMPTS, getProspectContext } from "./prospectData";
-import * as readline from "readline";
+import { askQuestion } from "./terminal";
 
 // Enum for prospect response classifications
 export enum ProspectResponseClassification {
@@ -24,105 +24,214 @@ export function setStateActor(actor: any) {
   stateActor = actor;
 }
 
+// New type for multi-format messages
+export type MultiFormatMessage = {
+  voiceMessage: string;
+  textMessage: string;
+  callContent: string;
+};
+
 export type MessageResponse = {
   message?: string;
 };
 
-export async function generateWarmupMessage(): Promise<string> {
+export async function generateWarmupMessage(): Promise<MultiFormatMessage> {
   const messages = [
     {
       role: "system" as const,
-      content: `You are a sales message expert.
-       Generate a personalized, professional warm-up message for cold outreach.
-       Information about the prospect: ${getProspectContext()}
-       Generate only the message, no other text.`,
+      content: `You are a sales message expert. Generate a personalized, professional warm-up message for cold outreach in three different formats.
+
+Information about the prospect: ${getProspectContext()}
+
+Generate three versions optimized for different communication channels:
+1. voiceMessage: Conversational tone for voice messages (30-45 seconds when spoken, natural and friendly)
+2. textMessage: Concise, professional text message (SMS/WhatsApp style, under 160 characters)
+3. callContent: Phone call script with natural conversation flow (opening line for a phone call)
+
+Each message should be personalized based on the prospect information and appropriate for cold outreach.
+
+Respond with a JSON object in this exact format:
+{
+  "voiceMessage": "Your voice message content here...",
+  "textMessage": "Your text message content here...",
+  "callContent": "Your call script content here..."
+}`,
     },
   ];
 
-  const warmupMessage = await sendRequestToOpenAi(messages);
+  try {
+    const response = await sendRequestToOpenAi(messages);
 
-  // After generating warmup message, transition to collectFeedback
+    if (response) {
+      const parsed = JSON.parse(response.trim()) as MultiFormatMessage;
+
+      // Validate the response has all required fields
+      if (parsed.voiceMessage && parsed.textMessage && parsed.callContent) {
+        // Trigger state transition
+        if (stateActor) {
+          stateActor.send({ type: "MESSAGE_GENERATED" });
+        }
+
+        return parsed;
+      }
+    }
+  } catch (error) {
+    console.error("Error parsing multi-format warmup message:", error);
+  }
+
+  // Fallback to basic messages if JSON parsing fails
+  const fallbackMessage =
+    "Hi! I'd love to connect and share something that might be valuable for your business.";
+
   if (stateActor) {
     stateActor.send({ type: "MESSAGE_GENERATED" });
   }
 
-  // console.log(
-  //   "#FRONTEND: Warm up message generated:",
-  //   warmupMessage,
-  //   "END #FRONTEND"
-  // );
-
-  return warmupMessage;
+  return {
+    voiceMessage: `Hey there! ${fallbackMessage} Would love to chat when you have a moment.`,
+    textMessage: fallbackMessage,
+    callContent: `Hi, is this a good time to talk? ${fallbackMessage}`,
+  };
 }
 
-export async function generateContextualMessage(): Promise<string> {
-  // In a real implementation, this would generate a contextual message to nudge the prospect
+export async function generateContextualMessage(): Promise<MultiFormatMessage> {
   const messages = [
     {
       role: "system" as const,
-      content: `You are a sales message expert.
-       Generate a personalized, professional contextual message for cold outreach.
-       Information about the prospect: ${getProspectContext()}
-       Generate only the message, no other text.`,
+      content: `You are a sales message expert. Generate a personalized, professional contextual message for cold outreach in three different formats.
+
+This is a FOLLOW-UP message - the prospect has responded positively but hasn't asked about business yet. Build on the previous interaction and gently guide toward business discussion.
+
+Information about the prospect: ${getProspectContext()}
+
+Generate three versions optimized for different communication channels:
+1. voiceMessage: Conversational tone for voice messages (30-45 seconds when spoken, builds rapport)
+2. textMessage: Concise, professional text message (SMS/WhatsApp style, under 160 characters)
+3. callContent: Phone call script with natural conversation flow (continuation of previous interaction)
+
+Each message should acknowledge the previous positive interaction and move the conversation forward.
+
+Respond with a JSON object in this exact format:
+{
+  "voiceMessage": "Your voice message content here...",
+  "textMessage": "Your text message content here...",
+  "callContent": "Your call script content here..."
+}`,
     },
   ];
 
-  const contextualMessage = await sendRequestToOpenAi(messages);
+  try {
+    const response = await sendRequestToOpenAi(messages);
 
-  // After generating contextual message, transition back to collectFeedback
+    if (response) {
+      const parsed = JSON.parse(response.trim()) as MultiFormatMessage;
+
+      // Validate the response has all required fields
+      if (parsed.voiceMessage && parsed.textMessage && parsed.callContent) {
+        // Trigger state transition
+        if (stateActor) {
+          stateActor.send({ type: "MESSAGE_GENERATED" });
+        }
+
+        return parsed;
+      }
+    }
+  } catch (error) {
+    console.error("Error parsing multi-format contextual message:", error);
+  }
+
+  // Fallback to basic messages if JSON parsing fails
+  const fallbackMessage =
+    "Thanks for your response! I'd love to share how we've helped similar companies in your industry.";
+
   if (stateActor) {
     stateActor.send({ type: "MESSAGE_GENERATED" });
   }
 
-  // console.log(
-  //   "#FRONTEND: Contextual message generated:",
-  //   contextualMessage,
-  //   "END #FRONTEND"
-  // );
-
-  return contextualMessage;
+  return {
+    voiceMessage: `Hey! ${fallbackMessage} Would be great to have a quick chat about it.`,
+    textMessage: fallbackMessage,
+    callContent: `Hi again! ${fallbackMessage} Do you have a few minutes to discuss?`,
+  };
 }
 
-export function generateFollowUpMessage(): string {
-  // In a real implementation, this would generate a follow-up message
-  // Check if we've reached the maximum follow-up attempts
+export async function generateFollowUpMessage(): Promise<MultiFormatMessage> {
+  let followUpAttempt = 1;
+
+  // Check current follow-up attempt number
   if (stateActor) {
     const currentState = stateActor.getSnapshot();
-    const followUpTries = currentState.context.followUpTries;
-
-    console.log(`Current follow-up tries: ${followUpTries}`);
-
-    // If we've reached 3 follow-ups, don't generate another message
-    // if (followUpTries >= 3) {
-    //   console.log("🔄 Maximum follow-ups reached - transitioning to archive");
-    //   stateActor.send({ type: "MESSAGE_GENERATED" });
-    //   return "Maximum follow-up attempts reached. This prospect should be archived due to lack of response.";
-    // }
+    followUpAttempt = currentState.context.followUpTries + 1;
+    console.log(
+      `Current follow-up tries: ${currentState.context.followUpTries}`
+    );
   }
 
-  const followUpMessage = `Hi again! Just wanted to follow up on my previous message. Hope you're doing well!`;
+  const messages = [
+    {
+      role: "system" as const,
+      content: `You are a sales message expert. Generate a personalized, professional follow-up message for cold outreach in three different formats.
 
-  // After generating follow-up message, let the state machine decide next step based on follow-up count
+This is FOLLOW-UP #${followUpAttempt} - the prospect hasn't responded to previous message(s). Keep it friendly but persistent, varying the approach based on the attempt number.
+
+Information about the prospect: ${getProspectContext()}
+
+Generate three versions optimized for different communication channels:
+1. voiceMessage: Conversational tone for voice messages (30-45 seconds when spoken, friendly persistence)
+2. textMessage: Concise, professional text message (SMS/WhatsApp style, under 160 characters)
+3. callContent: Phone call script with natural conversation flow (acknowledging previous attempts)
+
+Each message should be appropriate for follow-up attempt #${followUpAttempt} and maintain professionalism while showing persistence.
+
+Respond with a JSON object in this exact format:
+{
+  "voiceMessage": "Your voice message content here...",
+  "textMessage": "Your text message content here...",
+  "callContent": "Your call script content here..."
+}`,
+    },
+  ];
+
+  try {
+    const response = await sendRequestToOpenAi(messages);
+
+    if (response) {
+      const parsed = JSON.parse(response.trim()) as MultiFormatMessage;
+
+      // Validate the response has all required fields
+      if (parsed.voiceMessage && parsed.textMessage && parsed.callContent) {
+        // Trigger state transition
+        if (stateActor) {
+          console.log(
+            "🔄 Triggering MESSAGE_GENERATED - state machine will decide next step based on follow-up count"
+          );
+          stateActor.send({ type: "MESSAGE_GENERATED" });
+        }
+
+        return parsed;
+      }
+    }
+  } catch (error) {
+    console.error("Error parsing multi-format follow-up message:", error);
+  }
+
+  // Fallback to basic messages if JSON parsing fails
+  const fallbackVoiceMessage = `Hi again! Just wanted to follow up on my previous message. Hope you're doing well and would love to connect when you have a moment.`;
+  const fallbackTextMessage = `Hi! Just following up on my previous message. Hope you're doing well!`;
+  const fallbackCallContent = `Hi, I tried reaching out earlier and wanted to follow up. Is this a good time to chat briefly?`;
+
   if (stateActor) {
-    // setTimeout(() => {
     console.log(
       "🔄 Triggering MESSAGE_GENERATED - state machine will decide next step based on follow-up count"
     );
     stateActor.send({ type: "MESSAGE_GENERATED" });
-    // }, 100);
   }
 
-  return followUpMessage;
-  //   return `I've generated a follow-up message for John:
-
-  // "${followUpMessage}"
-
-  // This is a gentle follow-up that:
-  // - Maintains a friendly tone
-  // - Shows continued interest
-  // - Doesn't pressure the prospect
-
-  // You can send this message to John. The system will automatically handle whether to continue with more follow-ups or archive based on response patterns.`;
+  return {
+    voiceMessage: fallbackVoiceMessage,
+    textMessage: fallbackTextMessage,
+    callContent: fallbackCallContent,
+  };
 }
 
 export function archiveProspect(): string {
@@ -152,19 +261,8 @@ export async function collectFeedback(feedback?: string): Promise<string> {
   if (!actualFeedback) {
     console.log("\n🔔 MODAL OPENED: Please enter the prospect's response:");
 
-    // In a real implementation, this would trigger a modal on the frontend
-    // For now, we'll simulate with console input
-    actualFeedback = await new Promise<string>((resolve) => {
-      const tempRL = readline.createInterface({
-        input: process.stdin,
-        output: process.stdout,
-      });
-
-      tempRL.question("Prospect's response: ", (input: string) => {
-        tempRL.close();
-        resolve(input);
-      });
-    });
+    // Use the shared terminal interface
+    actualFeedback = await askQuestion("Prospect's response: ");
 
     if (!actualFeedback) {
       return "Error: No feedback provided";
@@ -229,11 +327,14 @@ async function autoClassifyFeedback(
       role: "system" as const,
       content: `You are an expert sales response classifier. Analyze the prospect's response and classify it into exactly one of these categories:
 
-ASKED_ABOUT_BUSINESS: The prospect is asking about what you do, your business, your company, your work, your services, or showing interest in learning more about your business.
+ASKED_ABOUT_BUSINESS: The prospect is asking about what you do, your business, your company, your work, your services, OR expressing clear interest in doing business together, wanting to collaborate, or showing readiness to engage in business discussions.
+Examples: "What does your company do?", "Tell me more about your services", "I want to do business with you", "Let's collaborate", "I'm interested in working together", "Let's discuss business opportunities"
 
-POSITIVE_OR_NEUTRAL: The prospect responded in a friendly, neutral, or engaged way but hasn't specifically asked about your business yet. This includes greetings, acknowledgments, small talk, or showing general interest.
+POSITIVE_OR_NEUTRAL: The prospect responded in a friendly, neutral, or engaged way but hasn't specifically asked about your business or expressed clear business interest yet. This includes greetings, acknowledgments, small talk, or showing general interest without business intent.
+Examples: "Hi there!", "Thanks for reaching out", "Nice to meet you", "How are you?", "That sounds interesting" (without business context)
 
 NEGATIVE_RESPONSE: The prospect is clearly not interested, asked to be removed, said no thanks, responded negatively or blocked user.
+Examples: "Not interested", "Remove me from your list", "Don't contact me again", "No thanks"
 
 NO_RESPONSE: Only use this if the salesperson explicitly states there was no response (this should be rare since we pre-filter for this).
 
@@ -289,7 +390,7 @@ export const functionSpecs = [
   {
     name: "generateWarmupMessage",
     description:
-      "Generate an initial warm-up message for the user to send to a cold prospect.",
+      "Generate an initial warm-up message in three formats (voice message, text message, and call script) for the user to send to a cold prospect.",
     parameters: {
       type: "object",
       properties: {},
@@ -299,7 +400,7 @@ export const functionSpecs = [
   {
     name: "generateContextualMessage",
     description:
-      "Generate a contextual message based on previous interaction for the user to send.",
+      "Generate a contextual message in three formats (voice message, text message, and call script) based on previous positive interaction for the user to send.",
     parameters: {
       type: "object",
       properties: {},
@@ -309,7 +410,7 @@ export const functionSpecs = [
   {
     name: "generateFollowUpMessage",
     description:
-      "Generate a follow-up message for the user to send to an unresponsive prospect.",
+      "Generate a follow-up message in three formats (voice message, text message, and call script) for the user to send to an unresponsive prospect.",
     parameters: {
       type: "object",
       properties: {},

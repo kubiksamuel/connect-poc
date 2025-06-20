@@ -10,7 +10,7 @@ export async function sendRequestToOpenAi(
       model,
       messages,
       temperature: 1,
-      max_tokens: 150,
+      max_tokens: 400,
     });
 
     return response.choices[0].message.content;

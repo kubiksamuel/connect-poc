@@ -1,5 +1,4 @@
 import { OpenAI } from "openai";
-import * as readline from "readline";
 import {
   functionSpecs,
   generateWarmupMessage,
@@ -16,11 +15,7 @@ import { createActor, SnapshotFrom } from "xstate";
 import { Tool } from "./stages/stage0A.types";
 import { openaiClient } from "./openAIClient";
 import { getProspectContext } from "./prospectData";
-
-const rl = readline.createInterface({
-  input: process.stdin,
-  output: process.stdout,
-});
+import { rl } from "./terminal";
 
 const TEMPERATURE = 0.8;
 
@@ -167,13 +162,16 @@ async function handleToolCall(
 
   switch (functionName) {
     case "generateWarmupMessage":
-      functionResponse = await generateWarmupMessage();
+      const warmupResponse = await generateWarmupMessage();
+      functionResponse = JSON.stringify(warmupResponse, null, 2);
       break;
     case "generateContextualMessage":
-      functionResponse = await generateContextualMessage();
+      const contextualResponse = await generateContextualMessage();
+      functionResponse = JSON.stringify(contextualResponse, null, 2);
       break;
     case "generateFollowUpMessage":
-      functionResponse = generateFollowUpMessage();
+      const followUpResponse = await generateFollowUpMessage();
+      functionResponse = JSON.stringify(followUpResponse, null, 2);
       break;
     case "collectFeedback":
       functionResponse = await collectFeedback(args.feedback);
@@ -260,6 +258,7 @@ async function startChat() {
   // Use the tools defined by the state machine
   const availableTools = allowedTools;
 
+  console.log("-------------------------------");
   console.log(`\nCurrent State: ${state.value}`);
   console.log(`Available Tools: ${availableTools.join(", ")}`);
 
@@ -309,8 +308,3 @@ const { prompt, allowedTools } = getStateMetadata(actor.getSnapshot());
 console.log(`State Instructions: ${prompt}`);
 console.log(`Available Tools: ${allowedTools.join(", ")}`);
 startChat();
-
-rl.on("close", () => {
-  console.log("👋 Goodbye!");
-  process.exit(0);
-});
