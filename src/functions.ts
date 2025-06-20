@@ -39,11 +39,11 @@ export async function generateWarmupMessage(): Promise<string> {
     stateActor.send({ type: "MESSAGE_GENERATED" });
   }
 
-  console.log(
-    "#FRONTEND: Warm up message generated:",
-    warmupMessage,
-    "END #FRONTEND"
-  );
+  // console.log(
+  //   "#FRONTEND: Warm up message generated:",
+  //   warmupMessage,
+  //   "END #FRONTEND"
+  // );
 
   return warmupMessage;
 }
@@ -69,11 +69,11 @@ export async function generateContextualMessage(): Promise<string> {
     stateActor.send({ type: "MESSAGE_GENERATED" });
   }
 
-  console.log(
-    "#FRONTEND: Contextual message generated:",
-    contextualMessage,
-    "END #FRONTEND"
-  );
+  // console.log(
+  //   "#FRONTEND: Contextual message generated:",
+  //   contextualMessage,
+  //   "END #FRONTEND"
+  // );
 
   return contextualMessage;
 }
@@ -145,7 +145,7 @@ export function moveToStage1(): string {
   return `Moved prospect ${CURRENT_PROSPECT_ID} to Stage 1. The prospect has shown interest and is ready for deeper business discussions.`;
 }
 
-export function collectFeedback(feedback?: string): string {
+export async function collectFeedback(feedback?: string): Promise<string> {
   // In a real implementation, this would trigger a modal on the frontend to collect prospect's feedback
   console.log("FUNCTION_CALL: Triggering feedback collection modal");
 
@@ -155,64 +155,109 @@ export function collectFeedback(feedback?: string): string {
 
   console.log("🔄 Feedback received:", feedback);
 
-  // Don't automatically transition - let the AI call classifyFeedback next
-  // The AI will handle the classification based on the feedback
-
-  return `Feedback collected: "${feedback}"
-
-I've received the prospect's response. Now I need to classify it to determine the next steps. Let me analyze this response and classify it appropriately.`;
-}
-
-// Response classification function that triggers state transitions
-export function classifyFeedback(params: {
-  classification:
-    | "ASKED_ABOUT_BUSINESS"
-    | "POSITIVE_OR_NEUTRAL"
-    | "NO_RESPONSE"
-    | "NEGATIVE_RESPONSE";
-}): string {
-  if (!stateActor) {
-    return "Error: State machine not initialized";
-  }
-  console.log("FUNCTION_CALL: Classifying feedback");
-
-  const { classification } = params;
+  // Automatically classify the feedback and trigger state transition
+  const classification = await autoClassifyFeedback(feedback);
+  console.log("🔄 Auto-classified as:", classification);
 
   let response = "";
   switch (classification) {
     case "ASKED_ABOUT_BUSINESS":
       response =
-        "Prospect showed interest in business - transitioning to Stage 1";
+        "Great! The prospect asked about your business - moving to Stage 1.";
       break;
     case "POSITIVE_OR_NEUTRAL":
       response =
-        "Prospect responded positively - transitioning to generate contextual message";
+        "The prospect responded positively - I'll generate a contextual message next.";
       break;
     case "NO_RESPONSE":
       if (stateActor) {
         const currentState = stateActor.getSnapshot();
         const followUpTries = currentState.context.followUpTries;
-        console.log("Follow up tries:", followUpTries);
-        console.log("Max follow up attempts:", MAX_FOLLOW_UP_ATTEMPTS);
         if (followUpTries < MAX_FOLLOW_UP_ATTEMPTS) {
           response =
-            "No response from prospect - let's generate another follow-up";
-          break;
+            "No response from prospect - I'll generate a follow-up message.";
         } else {
-          response = "No response from prospect - let's archive prospect";
-          break;
+          response = "Maximum follow-ups reached - archiving this prospect.";
         }
       }
-    case "NEGATIVE_RESPONSE":
-      response = "Prospect responded negatively - transitioning to archive";
       break;
-    default:
-      response = "Invalid classification type";
+    case "NEGATIVE_RESPONSE":
+      response = "The prospect responded negatively - archiving this prospect.";
+      break;
   }
 
-  stateActor.send({ type: classification });
+  // Trigger the state transition immediately
+  if (stateActor) {
+    stateActor.send({ type: classification });
+  }
 
-  return response;
+  return `Feedback collected: "${feedback}"
+
+${response}`;
+}
+
+// Helper function to automatically classify feedback using OpenAI
+async function autoClassifyFeedback(
+  feedback: string
+): Promise<
+  | "ASKED_ABOUT_BUSINESS"
+  | "POSITIVE_OR_NEUTRAL"
+  | "NO_RESPONSE"
+  | "NEGATIVE_RESPONSE"
+> {
+  // Use OpenAI to intelligently classify the response
+  const classificationMessages = [
+    {
+      role: "system" as const,
+      content: `You are an expert sales response classifier. Analyze the prospect's response and classify it into exactly one of these categories:
+
+ASKED_ABOUT_BUSINESS: The prospect is asking about what you do, your business, your company, your work, your services, or showing interest in learning more about your business.
+
+POSITIVE_OR_NEUTRAL: The prospect responded in a friendly, neutral, or engaged way but hasn't specifically asked about your business yet. This includes greetings, acknowledgments, small talk, or showing general interest.
+
+NEGATIVE_RESPONSE: The prospect is clearly not interested, asked to be removed, said no thanks, or responded negatively.
+
+NO_RESPONSE: Only use this if the salesperson explicitly states there was no response (this should be rare since we pre-filter for this).
+
+Respond with ONLY the valid classification category name, nothing else.`,
+    },
+    {
+      role: "user" as const,
+      content: `Classify this prospect response: "${feedback}"`,
+    },
+  ];
+
+  try {
+    const classification = await sendRequestToOpenAi(classificationMessages);
+
+    if (classification) {
+      const cleanClassification = classification.trim().toUpperCase();
+
+      // Validate the classification
+      if (
+        [
+          "ASKED_ABOUT_BUSINESS",
+          "POSITIVE_OR_NEUTRAL",
+          "NO_RESPONSE",
+          "NEGATIVE_RESPONSE",
+        ].includes(cleanClassification)
+      ) {
+        return cleanClassification as
+          | "ASKED_ABOUT_BUSINESS"
+          | "POSITIVE_OR_NEUTRAL"
+          | "NO_RESPONSE"
+          | "NEGATIVE_RESPONSE";
+      }
+    }
+  } catch (error) {
+    console.error("Error classifying feedback with OpenAI:", error);
+  }
+
+  // Fallback to positive/neutral if OpenAI classification fails
+  console.log(
+    "⚠️ OpenAI classification failed, defaulting to POSITIVE_OR_NEUTRAL"
+  );
+  return "POSITIVE_OR_NEUTRAL";
 }
 
 export const functionSpecs = [
@@ -272,36 +317,11 @@ export const functionSpecs = [
   {
     name: "collectFeedback",
     description:
-      "Triggers the UI to collect the prospect's reply. A modal will open where the salesperson can paste or dictate the message. You must call this function when you're ready to receive feedback.",
+      "Triggers the UI to collect the prospect's reply. A modal will open where the salesperson can paste or dictate the message. This function automatically classifies the feedback and transitions to the appropriate next state.",
     parameters: {
       type: "object",
       properties: {},
       required: [],
-    },
-  },
-  {
-    name: "classifyFeedback",
-    description:
-      "Classify the prospect's response to determine the next action in the sales process.",
-    parameters: {
-      type: "object",
-      properties: {
-        classification: {
-          type: "string",
-          enum: [
-            "ASKED_ABOUT_BUSINESS",
-            "POSITIVE_OR_NEUTRAL",
-            "NO_RESPONSE",
-            "NEGATIVE_RESPONSE",
-          ],
-          description: `The classification of the prospect's response:
-           - ASKED_ABOUT_BUSINESS: They asked about your business/work/what you do
-           - POSITIVE_OR_NEUTRAL: Engaged positively but didn't ask about business yet
-           - NO_RESPONSE: No response from prospect
-           - NEGATIVE_RESPONSE: Clearly negative or uninterested response`,
-        },
-      },
-      required: ["classification"],
     },
   },
 ];

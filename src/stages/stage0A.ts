@@ -67,8 +67,8 @@ export const stage0AColdProspect = setup({
       },
       meta: {
         prompt:
-          "Collect the prospect's response. When the user mentions the prospect responded/replied/answered, you MUST call the collectFeedback function to collect their feedback. After collecting the feedback, you MUST call classifyFeedback to determine the next step.",
-        allowedTools: ["collectFeedback", "classifyFeedback"],
+          "Collect the prospect's response. When the user mentions the prospect responded/replied/answered, you MUST call the collectFeedback function. The function will automatically classify the feedback and transition to the appropriate next state.",
+        allowedTools: ["collectFeedback"],
       },
     },
 
