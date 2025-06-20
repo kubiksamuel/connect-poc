@@ -291,10 +291,10 @@ export async function collectFeedback(feedback?: string): Promise<string> {
     const currentState = stateActor.getSnapshot();
     const followUpTries = currentState.context.followUpTries;
     if (followUpTries < MAX_FOLLOW_UP_ATTEMPTS) {
-      nextAction = "I'll generate a follow-up message.";
+      nextAction = "I'll generate a follow-up message to re-engage them.";
     } else {
       nextAction =
-        "Maximum consecutive follow-ups reached - you are going to archive this prospect.";
+        "Since we've tried multiple times without success, it's probably best to archive this prospect and focus on more responsive leads.";
     }
   }
 
@@ -336,7 +336,8 @@ Examples: "Hi there!", "Thanks for reaching out", "Nice to meet you", "How are y
 NEGATIVE_RESPONSE: The prospect is clearly not interested, asked to be removed, said no thanks, responded negatively or blocked user.
 Examples: "Not interested", "Remove me from your list", "Don't contact me again", "No thanks"
 
-NO_RESPONSE: Only use this if the salesperson explicitly states there was no response (this should be rare since we pre-filter for this).
+NO_RESPONSE: Use this when the salesperson explicitly states there was no response, no reply, silence, or mentions waiting for a response that never came.
+Examples: "No response", "He didn't reply", "No response after one week", "Radio silence", "Haven't heard back"
 
 Respond with a JSON object in this exact format:
 {
@@ -438,14 +439,14 @@ export const functionSpecs = [
   {
     name: "collectFeedback",
     description:
-      "Collect and classify the prospect's response. If the user has already provided the prospect's response in the chat, pass it directly as the feedback parameter. If no feedback is provided, it will trigger the UI modal for the user to input the response.",
+      "Collect and classify the prospect's response or lack thereof. If the user has mentioned the prospect's response OR stated there was no response (e.g., 'no response after one week'), pass that information as the feedback parameter (feedback: 'no response' is relevant feedback, put it to feedback field, in this case don't send null). If no feedback information is provided, it will trigger the UI modal for user input.",
     parameters: {
       type: "object",
       properties: {
         feedback: {
           type: ["string", "null"],
           description:
-            "The prospect's response/reply that the user mentioned in the chat. Only include this if the user has clearly stated what the prospect said/wrote back, otherwise set it to null.",
+            "The prospect's response/reply OR the user's statement about lack of response (e.g., 'no response after one week', 'he didn't reply'). Include this if the user has clearly stated what the prospect said/wrote back OR mentioned there was no response, otherwise set it to null.",
         },
       },
       required: ["feedback"],

@@ -56,14 +56,14 @@ export const stage0AColdProspect = setup({
     /* 2️⃣  Wait & collect feedback */
     collectFeedback: {
       on: {
-        [ProspectResponseClassification.ASKED_ABOUT_BUSINESS]: {
+        ASKED_ABOUT_BUSINESS: {
           target: "moveToStage1",
         },
-        [ProspectResponseClassification.POSITIVE_OR_NEUTRAL]: {
+        POSITIVE_OR_NEUTRAL: {
           target: "generateContextual",
           actions: { type: "resetTries" },
         },
-        [ProspectResponseClassification.NO_RESPONSE]: [
+        NO_RESPONSE: [
           {
             target: "generateFollowUp",
             guard: { type: "hasMoreFollowUps" },
@@ -72,7 +72,7 @@ export const stage0AColdProspect = setup({
             target: "archive",
           },
         ],
-        [ProspectResponseClassification.NEGATIVE_RESPONSE]: {
+        NEGATIVE_RESPONSE: {
           target: "archive",
         },
       },
@@ -127,7 +127,7 @@ export const stage0AColdProspect = setup({
       },
       meta: {
         prompt:
-          "This prospect isn't responding positively or has been unresponsive. NEXT STEP: IMMEDIATELY call archiveProspect function. You are in this state because the prospect should be archived - don't ask permission, just archive them.",
+          "This prospect hasn't been responsive despite multiple attempts. It's time to focus energy on more promising leads. NEXT STEP: IMMEDIATELY call archiveProspect function. Be empathetic and encouraging - this is a normal part of sales and helps prioritize time effectively.",
         allowedTools: ["archiveProspect"],
       },
     },

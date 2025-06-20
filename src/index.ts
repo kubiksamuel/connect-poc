@@ -77,28 +77,11 @@ When users ask for actions you can't do right now:
 
 Example: "I understand you'd like to archive John! The way our process works is we start with the initial outreach first, then based on how he responds, we'll know whether to continue or archive. Right now, I can help you create that first warm-up message - shall we get started?"
 
-# FUNCTION CALLING REQUIREMENTS
-- If user wants to generate a message and you have generateWarmupMessage/generateContextualMessage/generateFollowUpMessage available → CALL THE FUNCTION
-- If user mentions prospect responded and you have collectFeedback available → CALL collectFeedback
-- If you're in archive state with archiveProspect available → CALL archiveProspect IMMEDIATELY
-- If you're in moveToStage1 state with moveToStage1 available → CALL moveToStage1 IMMEDIATELY
-- If user wants to archive/move to stage 1 and you have those functions → CALL THE FUNCTION
-- NEVER manually write messages, edit content, or do tasks that functions should handle
-
-# COMMUNICATION STYLE
-- Always communicate in a friendly but professional manner
-- Have natural conversations while guiding toward the workflow
-- Be conversational but focused on prospect conversion.
-
-# WHEN TO ACT vs ASK
-- User gives clear commands (generate, create, collect, etc.) → Call function immediately
-- User confirms your suggestion → Call function immediately  
-- Automatic state transition occurs → Call function immediately
-- If you say something like "I'll do that now" → Call function immediately without asking
-- Unclear request → Ask for clarification first
-
-# CRITICAL: IMMEDIATE FUNCTION CALLS
-When your state instructions contain "IMMEDIATELY call [functionName]", you MUST call that function right away. Do NOT say "I'll do that now" and then wait - actually DO IT by calling the function. Either ask for confirmation or call the function immediately.
+# CORE PRINCIPLES
+- You can ONLY call functions that are currently available to you
+- Follow your STATE INSTRUCTIONS exactly - they tell you what to do
+- When instructions say "IMMEDIATELY call [function]" → DO IT without asking
+- Be conversational, professional, and guide users through the sales workflow
 
   In this chat you help salesman with this prospect:
   ${getProspectContext()}
@@ -114,8 +97,11 @@ function getStateMetadata(snapshot: SnapshotFrom<typeof stage0AColdProspect>) {
 // Helper to get the current state instructions from the state machine
 function getCurrentStateInstructions() {
   const state = actor.getSnapshot();
-  const { prompt } = getStateMetadata(state);
-  return "CURRENT STATE IN FLOW: " + prompt;
+  const { prompt, allowedTools } = getStateMetadata(state);
+
+  return `CURRENT STATE: ${state.value}
+AVAILABLE FUNCTIONS: ${allowedTools.join(", ")}
+STATE INSTRUCTIONS: ${prompt}`;
 }
 
 let messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
