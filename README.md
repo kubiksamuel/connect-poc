@@ -56,4 +56,9 @@ The system will launch an interactive chat with Steve, your AI sales assistant, 
 ## Resolved stages
 - **Stage0A** - This implementation handles Stage 0A. The other Stage 0 variants appear to be nearly identical, so we'll likely only need to adjust the context based on whether it's a cold, warm, or hot outreach. The rest should be fine.
 - <img width="468" alt="Screenshot 2025-06-20 at 13 37 27" src="https://github.com/user-attachments/assets/cc135643-3e83-42cd-a182-2ffbf375d597" />
+- These triggers haven't been implemented in this POC. It might be a tool call that's always present and performs a related action when certain conditions are met. However, I first need to clarify the expected behavior:
+- <img width="648" alt="Screenshot 2025-06-20 at 14 34 28" src="https://github.com/user-attachments/assets/1b26fc88-7c72-4ff0-8334-02d912aee1ef" />
+- <img width="1076" alt="Screenshot 2025-06-20 at 14 34 25" src="https://github.com/user-attachments/assets/bfddf9fd-53ec-4f00-a43d-24b7d7495220" />
+ 
+
 
