@@ -162,7 +162,7 @@ async function handleToolCall(
   const functionName = toolCall.function.name;
   let functionResponse: string;
 
-  console.log("FUNCTION_CALL: ", functionName);
+  console.log("FUNCTION_CALL: ", JSON.stringify({ name: functionName, args }));
   await new Promise((resolve) => setTimeout(resolve, 6000));
 
   switch (functionName) {
@@ -176,35 +176,7 @@ async function handleToolCall(
       functionResponse = generateFollowUpMessage();
       break;
     case "collectFeedback":
-      // Check if feedback was provided in the function call
-      if (args.feedback) {
-        // User already provided feedback in chat - use it directly
-        console.log("\n✅ Using feedback from chat:", args.feedback);
-        functionResponse = await collectFeedback(args.feedback);
-      } else {
-        // No feedback provided - show modal for input
-        console.log("\n🔔 MODAL OPENED: Please enter the prospect's response:");
-
-        // Use a simpler approach with the existing readline interface
-        const feedbackInput = await new Promise<string>((resolve) => {
-          // Pause the main readline temporarily
-          rl.pause();
-
-          // Create a temporary readline for feedback input
-          const tempRL = readline.createInterface({
-            input: process.stdin,
-            output: process.stdout,
-          });
-
-          tempRL.question("Prospect's response: ", (input) => {
-            tempRL.close();
-            rl.resume(); // Resume the main readline
-            resolve(input);
-          });
-        });
-
-        functionResponse = await collectFeedback(feedbackInput);
-      }
+      functionResponse = await collectFeedback(args.feedback);
       break;
     case "archiveProspect":
       functionResponse = archiveProspect();

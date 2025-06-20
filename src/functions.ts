@@ -1,5 +1,14 @@
 import { sendRequestToOpenAi } from "./openAiRequest";
 import { MAX_FOLLOW_UP_ATTEMPTS, getProspectContext } from "./prospectData";
+import * as readline from "readline";
+
+// Enum for prospect response classifications
+export enum ProspectResponseClassification {
+  ASKED_ABOUT_BUSINESS = "ASKED_ABOUT_BUSINESS",
+  POSITIVE_OR_NEUTRAL = "POSITIVE_OR_NEUTRAL",
+  NO_RESPONSE = "NO_RESPONSE",
+  NEGATIVE_RESPONSE = "NEGATIVE_RESPONSE",
+}
 
 // Global prospect ID that will be set when chat starts
 export let CURRENT_PROSPECT_ID: string = "";
@@ -137,64 +146,83 @@ export function moveToStage1(): string {
 }
 
 export async function collectFeedback(feedback?: string): Promise<string> {
-  // In a real implementation, this would trigger a modal on the frontend to collect prospect's feedback
+  let actualFeedback = feedback;
 
-  if (!feedback) {
-    return "Error: No feedback provided";
+  // If no feedback provided, collect it from user input
+  if (!actualFeedback) {
+    console.log("\n🔔 MODAL OPENED: Please enter the prospect's response:");
+
+    // In a real implementation, this would trigger a modal on the frontend
+    // For now, we'll simulate with console input
+    actualFeedback = await new Promise<string>((resolve) => {
+      const tempRL = readline.createInterface({
+        input: process.stdin,
+        output: process.stdout,
+      });
+
+      tempRL.question("Prospect's response: ", (input: string) => {
+        tempRL.close();
+        resolve(input);
+      });
+    });
+
+    if (!actualFeedback) {
+      return "Error: No feedback provided";
+    }
+  } else {
+    console.log("\n✅ Using feedback from chat:", actualFeedback);
   }
 
-  console.log("🔄 Feedback received:", feedback);
+  console.log("🔄 Feedback received:", actualFeedback);
 
   // Automatically classify the feedback and trigger state transition
-  const classification = await autoClassifyFeedback(feedback);
-  console.log("🔄 Auto-classified as:", classification);
+  const classificationResult = await autoClassifyFeedback(actualFeedback);
+  console.log(
+    "🔄 Auto-classified as:",
+    classificationResult.classifiedCategory
+  );
+  console.log("🔄 Reasoning:", classificationResult.description);
 
-  let response = "";
-  switch (classification) {
-    case "ASKED_ABOUT_BUSINESS":
-      response =
-        "Great! The prospect asked about your business - moving to Stage 1.";
-      break;
-    case "POSITIVE_OR_NEUTRAL":
-      response =
-        "The prospect responded positively - I'll generate a contextual message next.";
-      break;
-    case "NO_RESPONSE":
-      if (stateActor) {
-        const currentState = stateActor.getSnapshot();
-        const followUpTries = currentState.context.followUpTries;
-        if (followUpTries < MAX_FOLLOW_UP_ATTEMPTS) {
-          response =
-            "No response from prospect - I'll generate a follow-up message.";
-        } else {
-          response = "Maximum follow-ups reached - archiving this prospect.";
-        }
-      }
-      break;
-    case "NEGATIVE_RESPONSE":
-      response = "The prospect responded negatively - archiving this prospect.";
-      break;
+  // Handle special logic for NO_RESPONSE case (follow-up attempts check)
+  let nextAction = "";
+  if (
+    classificationResult.classifiedCategory ===
+      ProspectResponseClassification.NO_RESPONSE &&
+    stateActor
+  ) {
+    const currentState = stateActor.getSnapshot();
+    const followUpTries = currentState.context.followUpTries;
+    if (followUpTries < MAX_FOLLOW_UP_ATTEMPTS) {
+      nextAction = "I'll generate a follow-up message.";
+    } else {
+      nextAction =
+        "Maximum consecutive follow-ups reached - you are going to archive this prospect.";
+    }
   }
 
   // Trigger the state transition immediately
   if (stateActor) {
-    stateActor.send({ type: classification });
+    stateActor.send({ type: classificationResult.classifiedCategory });
   }
 
-  return `Feedback collected: "${feedback}"
+  return `Feedback collected: "${actualFeedback}"
 
-${response}`;
+Classification: ${classificationResult.classifiedCategory}
+Reasoning: ${classificationResult.description}${
+    nextAction ? `\n\nNext Action: ${nextAction}` : ""
+  }`;
 }
+
+// Type for classification result with reasoning
+type ClassificationResult = {
+  classifiedCategory: ProspectResponseClassification;
+  description: string;
+};
 
 // Helper function to automatically classify feedback using OpenAI
 async function autoClassifyFeedback(
   feedback: string
-): Promise<
-  | "ASKED_ABOUT_BUSINESS"
-  | "POSITIVE_OR_NEUTRAL"
-  | "NO_RESPONSE"
-  | "NEGATIVE_RESPONSE"
-> {
+): Promise<ClassificationResult> {
   // Use OpenAI to intelligently classify the response
   const classificationMessages = [
     {
@@ -209,7 +237,11 @@ NEGATIVE_RESPONSE: The prospect is clearly not interested, asked to be removed, 
 
 NO_RESPONSE: Only use this if the salesperson explicitly states there was no response (this should be rare since we pre-filter for this).
 
-Respond with ONLY the valid classification category name, nothing else.`,
+Respond with a JSON object in this exact format:
+{
+  "classifiedCategory": "CATEGORY_NAME",
+  "description": "Brief explanation of why this response fits this category"
+}`,
     },
     {
       role: "user" as const,
@@ -218,25 +250,24 @@ Respond with ONLY the valid classification category name, nothing else.`,
   ];
 
   try {
-    const classification = await sendRequestToOpenAi(classificationMessages);
+    const response = await sendRequestToOpenAi(classificationMessages);
 
-    if (classification) {
-      const cleanClassification = classification.trim().toUpperCase();
+    if (response) {
+      const parsed = JSON.parse(response.trim());
 
       // Validate the classification
       if (
-        [
-          "ASKED_ABOUT_BUSINESS",
-          "POSITIVE_OR_NEUTRAL",
-          "NO_RESPONSE",
-          "NEGATIVE_RESPONSE",
-        ].includes(cleanClassification)
+        parsed.classifiedCategory &&
+        parsed.description &&
+        Object.values(ProspectResponseClassification).includes(
+          parsed.classifiedCategory
+        )
       ) {
-        return cleanClassification as
-          | "ASKED_ABOUT_BUSINESS"
-          | "POSITIVE_OR_NEUTRAL"
-          | "NO_RESPONSE"
-          | "NEGATIVE_RESPONSE";
+        return {
+          classifiedCategory:
+            parsed.classifiedCategory as ProspectResponseClassification,
+          description: parsed.description,
+        };
       }
     }
   } catch (error) {
@@ -247,7 +278,11 @@ Respond with ONLY the valid classification category name, nothing else.`,
   console.log(
     "⚠️ OpenAI classification failed, defaulting to POSITIVE_OR_NEUTRAL"
   );
-  return "POSITIVE_OR_NEUTRAL";
+  return {
+    classifiedCategory: ProspectResponseClassification.POSITIVE_OR_NEUTRAL,
+    description:
+      "Classification failed, defaulting to neutral response for safety",
+  };
 }
 
 export const functionSpecs = [
@@ -307,10 +342,16 @@ export const functionSpecs = [
   {
     name: "collectFeedback",
     description:
-      "Triggers the UI to collect the prospect's reply. A modal will open where the salesperson can paste or dictate the message. This function automatically classifies the feedback and transitions to the appropriate next state.",
+      "Collect and classify the prospect's response. If the user has already provided the prospect's response in the chat, pass it directly as the feedback parameter. If no feedback is provided, it will trigger the UI modal for the user to input the response.",
     parameters: {
       type: "object",
-      properties: {},
+      properties: {
+        feedback: {
+          type: "string",
+          description:
+            "The prospect's response/reply that the user mentioned in the chat. Only include this if the user has clearly stated what the prospect said/wrote back.",
+        },
+      },
       required: [],
     },
   },

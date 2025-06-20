@@ -1,3 +1,5 @@
+import { ProspectResponseClassification } from "../functions";
+
 /*─────────────────────────────────────────────────────────────*/
 /*  Helper types                                               */
 export type Tool =
@@ -17,10 +19,10 @@ export type Ctx = {
 };
 
 export type Evt =
-  | { type: "ASKED_ABOUT_BUSINESS" }
-  | { type: "POSITIVE_OR_NEUTRAL" }
-  | { type: "NO_RESPONSE" }
-  | { type: "NEGATIVE_RESPONSE" }
+  | { type: ProspectResponseClassification.ASKED_ABOUT_BUSINESS }
+  | { type: ProspectResponseClassification.POSITIVE_OR_NEUTRAL }
+  | { type: ProspectResponseClassification.NO_RESPONSE }
+  | { type: ProspectResponseClassification.NEGATIVE_RESPONSE }
   | { type: "MESSAGE_GENERATED" }
   | { type: "FEEDBACK_COLLECTED"; text: string }
   | { type: "STAGE_1_REACHED" }

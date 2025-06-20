@@ -2,6 +2,7 @@
 import { setup, assign } from "xstate";
 import { Ctx, Evt, Tool } from "./stage0A.types";
 import { MAX_FOLLOW_UP_ATTEMPTS } from "../prospectData";
+import { ProspectResponseClassification } from "../functions";
 
 /*─────────────────────────────────────────────────────────────*/
 /*  Machine definition using XState v5 `setup()`               */
@@ -55,12 +56,14 @@ export const stage0AColdProspect = setup({
     /* 2️⃣  Wait & collect feedback */
     collectFeedback: {
       on: {
-        ASKED_ABOUT_BUSINESS: { target: "moveToStage1" },
-        POSITIVE_OR_NEUTRAL: {
+        [ProspectResponseClassification.ASKED_ABOUT_BUSINESS]: {
+          target: "moveToStage1",
+        },
+        [ProspectResponseClassification.POSITIVE_OR_NEUTRAL]: {
           target: "generateContextual",
           actions: { type: "resetTries" },
         },
-        NO_RESPONSE: [
+        [ProspectResponseClassification.NO_RESPONSE]: [
           {
             target: "generateFollowUp",
             guard: { type: "hasMoreFollowUps" },
@@ -69,7 +72,9 @@ export const stage0AColdProspect = setup({
             target: "archive",
           },
         ],
-        NEGATIVE_RESPONSE: { target: "archive" },
+        [ProspectResponseClassification.NEGATIVE_RESPONSE]: {
+          target: "archive",
+        },
       },
       meta: {
         prompt:
