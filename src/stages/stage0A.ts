@@ -78,7 +78,7 @@ export const stage0AColdProspect = setup({
       },
       meta: {
         prompt:
-          "A message has been sent to the prospect. NEXT STEP: Ask if the prospect has responded yet. When the user mentions the prospect responded/replied/answered, immediately call collectFeedback function. If the user already provided the exact response/reply in their message (e.g., 'John replied: Not interested right now'), include that as the feedback parameter. If they just mentioned a response without details (e.g., 'He replied.'), call collectFeedback without parameters to open the input modal.",
+          "A message has been sent to the prospect. NEXT STEP: Ask if the prospect has responded yet. When the user mentions the prospect responded/replied/answered, immediately call collectFeedback function. If the user already provided the exact response/reply in their message (e.g., 'John replied: Not interested right now'), include that as the feedback parameter. If they just mentioned a response without details (e.g., 'He replied.'), call collectFeedback without parameters to open the input modal. If the user didn't provide feedbaack in chat, always prefer to call collectFeedback with null feedback to open the input modal instead of asking for feedback in chat.",
         allowedTools: ["collectFeedback"],
       },
     },

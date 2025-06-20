@@ -1,5 +1,6 @@
 import { OpenAI } from "openai";
 import { openaiClient } from "./openAIClient";
+import { TEMPERATURE } from "./index";
 
 export async function sendRequestToOpenAi(
   messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[],
@@ -9,7 +10,7 @@ export async function sendRequestToOpenAi(
     const response = await openaiClient.chat.completions.create({
       model,
       messages,
-      temperature: 1,
+      temperature: TEMPERATURE,
       max_tokens: 400,
     });
 

@@ -17,7 +17,7 @@ import { openaiClient } from "./openAIClient";
 import { getProspectContext } from "./prospectData";
 import { rl } from "./terminal";
 
-const TEMPERATURE = 0.8;
+export const TEMPERATURE = 0.8;
 
 // Initialize state machine and set global prospect ID
 const prospectId = "PROSPECT_JOHN_DOE";
@@ -80,6 +80,8 @@ Example: "I understand you'd like to archive John! The way our process works is 
 # FUNCTION CALLING REQUIREMENTS
 - If user wants to generate a message and you have generateWarmupMessage/generateContextualMessage/generateFollowUpMessage available → CALL THE FUNCTION
 - If user mentions prospect responded and you have collectFeedback available → CALL collectFeedback
+- If you're in archive state with archiveProspect available → CALL archiveProspect IMMEDIATELY
+- If you're in moveToStage1 state with moveToStage1 available → CALL moveToStage1 IMMEDIATELY
 - If user wants to archive/move to stage 1 and you have those functions → CALL THE FUNCTION
 - NEVER manually write messages, edit content, or do tasks that functions should handle
 
@@ -92,7 +94,11 @@ Example: "I understand you'd like to archive John! The way our process works is 
 - User gives clear commands (generate, create, collect, etc.) → Call function immediately
 - User confirms your suggestion → Call function immediately  
 - Automatic state transition occurs → Call function immediately
+- If you say something like "I'll do that now" → Call function immediately without asking
 - Unclear request → Ask for clarification first
+
+# CRITICAL: IMMEDIATE FUNCTION CALLS
+When your state instructions contain "IMMEDIATELY call [functionName]", you MUST call that function right away. Do NOT say "I'll do that now" and then wait - actually DO IT by calling the function. Either ask for confirmation or call the function immediately.
 
   In this chat you help salesman with this prospect:
   ${getProspectContext()}
