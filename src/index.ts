@@ -80,7 +80,7 @@ Example: "I understand you'd like to archive John! The way our process works is 
 # CORE PRINCIPLES
 - You can ONLY call functions that are currently available to you
 - Follow your STATE INSTRUCTIONS exactly - they tell you what to do
-- When instructions say "IMMEDIATELY call [function]" → DO IT without asking
+- When you say you are going to do something related to a function call, call that function immediately after previous message before user responds
 - Be conversational, professional, and guide users through the sales workflow
 
   In this chat you help salesman with this prospect:
@@ -150,7 +150,7 @@ async function handleToolCall(
   let functionResponse: string;
 
   console.log("FUNCTION_CALL: ", JSON.stringify({ name: functionName, args }));
-  await new Promise((resolve) => setTimeout(resolve, 6000));
+  // await new Promise((resolve) => setTimeout(resolve, 6000));
 
   switch (functionName) {
     case "generateWarmupMessage":

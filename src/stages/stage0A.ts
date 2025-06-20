@@ -57,7 +57,7 @@ export const stage0AColdProspect = setup({
     collectFeedback: {
       on: {
         ASKED_ABOUT_BUSINESS: {
-          target: "moveToStage1",
+          target: "stage1",
         },
         POSITIVE_OR_NEUTRAL: {
           target: "generateContextual",
@@ -108,17 +108,17 @@ export const stage0AColdProspect = setup({
       },
     },
 
-    /* 5️⃣  Success → pass control to Stage 1 */
-    moveToStage1: {
-      on: {
-        STAGE_1_REACHED: { target: "stage1" },
-      },
-      meta: {
-        prompt:
-          "Great news! The prospect has shown interest in the business. NEXT STEP: IMMEDIATELY call moveToStage1 function. You are in this state because the prospect is ready for Stage 1 - don't ask permission, just move them.",
-        allowedTools: ["moveToStage1"],
-      },
-    },
+    // /* 5️⃣  Success → pass control to Stage 1 */
+    // moveToStage1: {
+    //   on: {
+    //     STAGE_1_REACHED: { target: "stage1" },
+    //   },
+    //   meta: {
+    //     prompt:
+    //       "Great news! The prospect has shown interest in the business. NEXT STEP: IMMEDIATELY call moveToStage1 function. You are in this state because the prospect is ready for Stage 1 - don't ask permission, just move them.",
+    //     allowedTools: ["moveToStage1"],
+    //   },
+    // },
 
     /* 6️⃣  Archive path */
     archive: {
@@ -127,7 +127,7 @@ export const stage0AColdProspect = setup({
       },
       meta: {
         prompt:
-          "This prospect hasn't been responsive despite multiple attempts. It's time to focus energy on more promising leads. NEXT STEP: IMMEDIATELY call archiveProspect function. Be empathetic and encouraging - this is a normal part of sales and helps prioritize time effectively.",
+          "This prospect hasn't been responsive despite multiple attempts. It's time to focus energy on more promising leads. NEXT STEP: IMMEDIATELY trigger function call for archiveProspect. Be empathetic and encouraging - this is a normal part of sales and helps prioritize time effectively.",
         allowedTools: ["archiveProspect"],
       },
     },
@@ -144,7 +144,8 @@ export const stage0AColdProspect = setup({
     stage1: {
       type: "final",
       meta: {
-        prompt: "The prospect has been moved to stage 2.",
+        prompt:
+          "The prospect has been moved to stage 1. You have to describe what to do now - present a product and invite to private or company call",
         allowedTools: [],
       },
     },
