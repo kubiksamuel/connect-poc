@@ -52,3 +52,8 @@ The system will launch an interactive chat with Steve, your AI sales assistant, 
 - **XState** - State machine management
 - **OpenAI API** - AI message generation and response classification
 - **Node.js** - Runtime environment
+
+## Resolved stages
+- **Stage0A** - This implementation handles Stage 0A. The other Stage 0 variants appear to be nearly identical, so we'll likely only need to adjust the context based on whether it's a cold, warm, or hot outreach. The rest should be fine.
+- <img width="468" alt="Screenshot 2025-06-20 at 13 37 27" src="https://github.com/user-attachments/assets/cc135643-3e83-42cd-a182-2ffbf375d597" />
+
