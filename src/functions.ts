@@ -215,7 +215,7 @@ ASKED_ABOUT_BUSINESS: The prospect is asking about what you do, your business, y
 
 POSITIVE_OR_NEUTRAL: The prospect responded in a friendly, neutral, or engaged way but hasn't specifically asked about your business yet. This includes greetings, acknowledgments, small talk, or showing general interest.
 
-NEGATIVE_RESPONSE: The prospect is clearly not interested, asked to be removed, said no thanks, or responded negatively.
+NEGATIVE_RESPONSE: The prospect is clearly not interested, asked to be removed, said no thanks, responded negatively or blocked user.
 
 NO_RESPONSE: Only use this if the salesperson explicitly states there was no response (this should be rare since we pre-filter for this).
 

@@ -15,6 +15,7 @@ import { stage0AColdProspect } from "./stages/stage0A";
 import { createActor, SnapshotFrom } from "xstate";
 import { Tool } from "./stages/stage0A.types";
 import { openaiClient } from "./openAIClient";
+import { prospectData } from "./prospectData";
 
 const rl = readline.createInterface({
   input: process.stdin,
@@ -71,9 +72,6 @@ You are Steve, a professional sales assistant who helps convert cold prospects t
 - If user wants to archive/move to stage 1 and you have those functions → CALL THE FUNCTION
 - NEVER manually write messages, edit content, or do tasks that functions should handle
 
-
-
-
 # COMMUNICATION STYLE
 - Always communicate in a friendly but professional manner
 - Have natural conversations while guiding toward the workflow
@@ -83,7 +81,11 @@ You are Steve, a professional sales assistant who helps convert cold prospects t
 - User gives clear commands (generate, create, collect, etc.) → Call function immediately
 - User confirms your suggestion → Call function immediately  
 - Automatic state transition occurs → Call function immediately
-- Unclear request → Ask for clarification first`;
+- Unclear request → Ask for clarification first
+
+  In this chat you help salesman with this prospect:
+  ${JSON.stringify(prospectData)}
+`;
 
 // Helper to get state metadata
 function getStateMetadata(snapshot: SnapshotFrom<typeof stage0AColdProspect>) {
