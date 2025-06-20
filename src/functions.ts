@@ -60,7 +60,11 @@ Respond with a JSON object in this exact format:
   ];
 
   try {
-    const response = await sendRequestToOpenAi(messages);
+    const response = await sendRequestToOpenAi(
+      messages,
+      "gpt-4o-mini",
+      "warmup_message_generation"
+    );
 
     if (response) {
       const parsed = JSON.parse(response.trim()) as MultiFormatMessage;
@@ -121,7 +125,11 @@ Respond with a JSON object in this exact format:
   ];
 
   try {
-    const response = await sendRequestToOpenAi(messages);
+    const response = await sendRequestToOpenAi(
+      messages,
+      "gpt-4o-mini",
+      "contextual_message_generation"
+    );
 
     if (response) {
       const parsed = JSON.parse(response.trim()) as MultiFormatMessage;
@@ -193,7 +201,11 @@ Respond with a JSON object in this exact format:
   ];
 
   try {
-    const response = await sendRequestToOpenAi(messages);
+    const response = await sendRequestToOpenAi(
+      messages,
+      "gpt-4o-mini",
+      "followup_message_generation"
+    );
 
     if (response) {
       const parsed = JSON.parse(response.trim()) as MultiFormatMessage;
@@ -352,7 +364,11 @@ Respond with a JSON object in this exact format:
   ];
 
   try {
-    const response = await sendRequestToOpenAi(classificationMessages);
+    const response = await sendRequestToOpenAi(
+      classificationMessages,
+      "gpt-4o-mini",
+      "feedback_classification"
+    );
 
     if (response) {
       const parsed = JSON.parse(response.trim());

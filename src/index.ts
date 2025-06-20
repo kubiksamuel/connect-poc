@@ -16,6 +16,7 @@ import { Tool } from "./stages/stage0A.types";
 import { openaiClient } from "./openAIClient";
 import { getProspectContext } from "./prospectData";
 import { rl } from "./terminal";
+import { tokenTracker, estimateTokenUsage } from "./tokenTracker";
 
 export const TEMPERATURE = 0.8;
 
@@ -116,7 +117,10 @@ let messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
 ];
 
 async function handleStream(
-  stream: AsyncIterable<OpenAI.Chat.Completions.ChatCompletionChunk>
+  stream: AsyncIterable<OpenAI.Chat.Completions.ChatCompletionChunk>,
+  inputMessages: OpenAI.Chat.Completions.ChatCompletionMessageParam[],
+  model: string,
+  purpose: string
 ) {
   const chunks: string[] = [];
   process.stdout.write("Steve: ");
@@ -129,7 +133,22 @@ async function handleStream(
     }
   }
   process.stdout.write("\n");
-  return chunks.join("");
+
+  const outputText = chunks.join("");
+
+  // Estimate token usage for streaming response
+  const inputText = inputMessages
+    .map((msg) =>
+      typeof msg.content === "string"
+        ? msg.content
+        : JSON.stringify(msg.content)
+    )
+    .join("\n");
+
+  const tokenUsage = estimateTokenUsage(inputText, outputText, model);
+  tokenTracker.logApiCall(model, purpose, tokenUsage, "streaming");
+
+  return outputText;
 }
 
 interface ToolCallResult {
@@ -190,14 +209,20 @@ async function handleToolCall(
     content: functionResponse,
   });
 
+  const followUpMessages = [...messages, ...result.messages];
   const followUpStream = await openaiClient.chat.completions.create({
     model: "gpt-4o-mini",
-    messages: [...messages, ...result.messages],
+    messages: followUpMessages,
     stream: true,
     temperature: TEMPERATURE,
   });
 
-  const followUpContent = await handleStream(followUpStream);
+  const followUpContent = await handleStream(
+    followUpStream,
+    followUpMessages,
+    "gpt-4o-mini",
+    "tool_followup_response"
+  );
   result.messages.push({ role: "assistant", content: followUpContent });
   result.response = followUpContent;
 
@@ -205,7 +230,10 @@ async function handleToolCall(
 }
 
 async function processStreamResponse(
-  response: AsyncIterable<OpenAI.Chat.Completions.ChatCompletionChunk>
+  response: AsyncIterable<OpenAI.Chat.Completions.ChatCompletionChunk>,
+  inputMessages: OpenAI.Chat.Completions.ChatCompletionMessageParam[],
+  model: string,
+  purpose: string
 ) {
   let accumulatedContent = "";
   let toolCall:
@@ -240,6 +268,20 @@ async function processStreamResponse(
     }
   }
 
+  // Track token usage for main chat response (only if there's actual content, not just tool calls)
+  if (accumulatedContent.trim()) {
+    const inputText = inputMessages
+      .map((msg) =>
+        typeof msg.content === "string"
+          ? msg.content
+          : JSON.stringify(msg.content)
+      )
+      .join("\n");
+
+    const tokenUsage = estimateTokenUsage(inputText, accumulatedContent, model);
+    tokenTracker.logApiCall(model, purpose, tokenUsage, "streaming");
+  }
+
   return { accumulatedContent, toolCall };
 }
 
@@ -256,7 +298,35 @@ async function startChat() {
 
   rl.question("You: ", async (input) => {
     if (input.toLowerCase() === "exit") {
+      console.log("\n👋 Thanks for using the prospect conversion system!");
+      tokenTracker.printSummary();
       rl.close();
+      return;
+    }
+
+    // Special commands for token tracking
+    if (
+      input.toLowerCase() === "/summary" ||
+      input.toLowerCase() === "/tokens"
+    ) {
+      tokenTracker.printSummary();
+      startChat();
+      return;
+    }
+
+    if (input.toLowerCase() === "/reset-tokens") {
+      tokenTracker.reset();
+      startChat();
+      return;
+    }
+
+    if (input.toLowerCase() === "/help") {
+      console.log("\n📋 Available commands:");
+      console.log("  /summary or /tokens - Show token usage and cost summary");
+      console.log("  /reset-tokens - Reset token tracking data");
+      console.log("  /help - Show this help message");
+      console.log("  exit - Exit the application\n");
+      startChat();
       return;
     }
 
@@ -277,7 +347,10 @@ async function startChat() {
     });
 
     const { accumulatedContent, toolCall } = await processStreamResponse(
-      response
+      response,
+      messages,
+      "gpt-4o-mini",
+      "main_chat_response"
     );
 
     if (toolCall) {
@@ -292,9 +365,9 @@ async function startChat() {
   });
 }
 
-console.log(
-  "🚀 Welcome! Steve is ready to help you convert prospects. (Type 'exit' to quit)"
-);
+console.log("🚀 Welcome! Steve is ready to help you convert prospects.");
+console.log("💰 Token usage and costs are being tracked automatically.");
+console.log("📋 Type '/help' for available commands or 'exit' to quit.\n");
 console.log(`Initial State: ${actor.getSnapshot().value}`);
 const { prompt, allowedTools } = getStateMetadata(actor.getSnapshot());
 console.log(`State Instructions: ${prompt}`);
