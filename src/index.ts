@@ -16,7 +16,7 @@ import { Tool } from "./stages/stage0A.types";
 import { openaiClient } from "./openAIClient";
 import { getProspectContext } from "./prospectData";
 import { rl } from "./terminal";
-import { tokenTracker, estimateTokenUsage } from "./tokenTracker";
+import { tokenTracker, extractStreamingTokenUsage } from "./tokenTracker";
 
 export const TEMPERATURE = 0.8;
 
@@ -118,11 +118,12 @@ let messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
 
 async function handleStream(
   stream: AsyncIterable<OpenAI.Chat.Completions.ChatCompletionChunk>,
-  inputMessages: OpenAI.Chat.Completions.ChatCompletionMessageParam[],
   model: string,
   purpose: string
 ) {
   const chunks: string[] = [];
+  let usage: OpenAI.Completions.CompletionUsage | undefined;
+
   process.stdout.write("Steve: ");
 
   for await (const chunk of stream) {
@@ -131,22 +132,30 @@ async function handleStream(
       process.stdout.write(content);
       chunks.push(content);
     }
-  }
-  process.stdout.write("\n");
 
+    // Capture usage data when it arrives (usually in the last chunk)
+    if (chunk.usage) {
+      usage = chunk.usage;
+    }
+  }
+
+  process.stdout.write("\n");
   const outputText = chunks.join("");
 
-  // Estimate token usage for streaming response
-  const inputText = inputMessages
-    .map((msg) =>
-      typeof msg.content === "string"
-        ? msg.content
-        : JSON.stringify(msg.content)
-    )
-    .join("\n");
-
-  const tokenUsage = estimateTokenUsage(inputText, outputText, model);
-  tokenTracker.logApiCall(model, purpose, tokenUsage, "streaming");
+  // Log the API call with accurate usage data
+  if (usage) {
+    // console.log("USAGE: ", usage);
+    const tokenUsage = {
+      promptTokens: usage.prompt_tokens,
+      completionTokens: usage.completion_tokens,
+      totalTokens: usage.total_tokens,
+    };
+    tokenTracker.logApiCall(model, purpose, tokenUsage, "streaming", true);
+  } else {
+    console.log(
+      "⚠️ No usage data received. Make sure stream_options.include_usage is enabled."
+    );
+  }
 
   return outputText;
 }
@@ -214,12 +223,12 @@ async function handleToolCall(
     model: "gpt-4o-mini",
     messages: followUpMessages,
     stream: true,
+    stream_options: { include_usage: true },
     temperature: TEMPERATURE,
   });
 
   const followUpContent = await handleStream(
     followUpStream,
-    followUpMessages,
     "gpt-4o-mini",
     "tool_followup_response"
   );
@@ -239,6 +248,7 @@ async function processStreamResponse(
   let toolCall:
     | OpenAI.Chat.Completions.ChatCompletionMessageToolCall
     | undefined;
+  let usage: OpenAI.Completions.CompletionUsage | undefined;
 
   process.stdout.write("Steve: ");
   for await (const chunk of response) {
@@ -266,20 +276,21 @@ async function processStreamResponse(
         }
       }
     }
+
+    // Capture usage data when it arrives (usually in the last chunk)
+    if (chunk.usage) {
+      usage = chunk.usage;
+    }
   }
 
-  // Track token usage for main chat response (only if there's actual content, not just tool calls)
-  if (accumulatedContent.trim()) {
-    const inputText = inputMessages
-      .map((msg) =>
-        typeof msg.content === "string"
-          ? msg.content
-          : JSON.stringify(msg.content)
-      )
-      .join("\n");
-
-    const tokenUsage = estimateTokenUsage(inputText, accumulatedContent, model);
-    tokenTracker.logApiCall(model, purpose, tokenUsage, "streaming");
+  // Log the API call with accurate usage data (only if there's actual content or tool calls)
+  if (usage && (accumulatedContent.trim() || toolCall)) {
+    const tokenUsage = {
+      promptTokens: usage.prompt_tokens,
+      completionTokens: usage.completion_tokens,
+      totalTokens: usage.total_tokens,
+    };
+    tokenTracker.logApiCall(model, purpose, tokenUsage, "streaming", true);
   }
 
   return { accumulatedContent, toolCall };
@@ -343,6 +354,7 @@ async function startChat() {
         .filter((tool) => availableTools.includes(tool.function.name)),
       tool_choice: availableTools.length > 0 ? "auto" : "none",
       stream: true,
+      stream_options: { include_usage: true },
       temperature: TEMPERATURE,
     });
 

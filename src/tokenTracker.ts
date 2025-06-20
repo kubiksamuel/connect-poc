@@ -1,4 +1,4 @@
-// Token tracking and cost calculation module
+// Token tracking and cost calculation module with accurate streaming support
 import { OpenAI } from "openai";
 
 // OpenAI pricing per 1M tokens (as of 2024)
@@ -43,6 +43,7 @@ export interface ApiCallLog {
   tokenUsage: TokenUsage;
   cost: CostCalculation;
   requestType: "streaming" | "non-streaming";
+  accurate: boolean; // Whether the token count is accurate or estimated
 }
 
 class TokenTracker {
@@ -94,7 +95,8 @@ class TokenTracker {
     model: string,
     purpose: string,
     tokenUsage: TokenUsage,
-    requestType: "streaming" | "non-streaming" = "non-streaming"
+    requestType: "streaming" | "non-streaming" = "non-streaming",
+    accurate: boolean = true
   ): ApiCallLog {
     const cost = this.calculateCost(model, tokenUsage);
     this.totalCost += cost.totalCost;
@@ -107,12 +109,16 @@ class TokenTracker {
       tokenUsage,
       cost,
       requestType,
+      accurate,
     };
 
     this.logs.push(log);
 
-    // Console logging with color coding
-    // console.log(`\n💰 TOKEN USAGE - ${purpose.toUpperCase()}`);
+    // Console logging with accuracy indicator
+    // const accuracyIndicator = accurate ? "✅" : "⚠️";
+    // console.log(
+    //   `\n💰 TOKEN USAGE - ${purpose.toUpperCase()} ${accuracyIndicator}`
+    // );
     // console.log(`   Model: ${model}`);
     // console.log(`   Input tokens: ${tokenUsage.promptTokens.toLocaleString()}`);
     // console.log(
@@ -124,6 +130,7 @@ class TokenTracker {
     //     6
     //   )}, Output: $${cost.outputCost.toFixed(6)})`
     // );
+    // console.log(`   Accuracy: ${accurate ? "Exact" : "Estimated"}`);
     // console.log(`   Total session cost: $${this.totalCost.toFixed(6)}`);
 
     return log;
@@ -146,6 +153,9 @@ class TokenTracker {
       0
     );
 
+    const accurateCount = this.logs.filter((log) => log.accurate).length;
+    const estimatedCount = this.logs.filter((log) => !log.accurate).length;
+
     // Group by purpose
     const byPurpose = this.logs.reduce((acc, log) => {
       if (!acc[log.purpose]) {
@@ -153,13 +163,17 @@ class TokenTracker {
           calls: 0,
           tokens: 0,
           cost: 0,
+          accurate: 0,
+          estimated: 0,
         };
       }
       acc[log.purpose].calls++;
       acc[log.purpose].tokens += log.tokenUsage.totalTokens;
       acc[log.purpose].cost += log.cost.totalCost;
+      if (log.accurate) acc[log.purpose].accurate++;
+      else acc[log.purpose].estimated++;
       return acc;
-    }, {} as Record<string, { calls: number; tokens: number; cost: number }>);
+    }, {} as Record<string, { calls: number; tokens: number; cost: number; accurate: number; estimated: number }>);
 
     // Group by model
     const byModel = this.logs.reduce((acc, log) => {
@@ -168,13 +182,17 @@ class TokenTracker {
           calls: 0,
           tokens: 0,
           cost: 0,
+          accurate: 0,
+          estimated: 0,
         };
       }
       acc[log.model].calls++;
       acc[log.model].tokens += log.tokenUsage.totalTokens;
       acc[log.model].cost += log.cost.totalCost;
+      if (log.accurate) acc[log.model].accurate++;
+      else acc[log.model].estimated++;
       return acc;
-    }, {} as Record<string, { calls: number; tokens: number; cost: number }>);
+    }, {} as Record<string, { calls: number; tokens: number; cost: number; accurate: number; estimated: number }>);
 
     return {
       totalCalls: this.logs.length,
@@ -183,6 +201,8 @@ class TokenTracker {
       totalOutputTokens,
       totalCost: this.totalCost,
       formattedTotalCost: `$${this.totalCost.toFixed(6)}`,
+      accurateCount,
+      estimatedCount,
       byPurpose,
       byModel,
       logs: this.logs,
@@ -199,6 +219,8 @@ class TokenTracker {
     console.log("📊 TOKEN USAGE & COST SUMMARY");
     console.log("=".repeat(60));
     console.log(`Total API calls: ${summary.totalCalls}`);
+    console.log(`  - Accurate: ${summary.accurateCount} ✅`);
+    console.log(`  - Estimated: ${summary.estimatedCount} ⚠️`);
     console.log(`Total tokens: ${summary.totalTokens.toLocaleString()}`);
     console.log(
       `  - Input tokens: ${summary.totalInputTokens.toLocaleString()}`
@@ -215,7 +237,7 @@ class TokenTracker {
           stats.calls
         } calls, ${stats.tokens.toLocaleString()} tokens, $${stats.cost.toFixed(
           6
-        )}`
+        )} (${stats.accurate}✅/${stats.estimated}⚠️)`
       );
     });
 
@@ -226,9 +248,15 @@ class TokenTracker {
           stats.calls
         } calls, ${stats.tokens.toLocaleString()} tokens, $${stats.cost.toFixed(
           6
-        )}`
+        )} (${stats.accurate}✅/${stats.estimated}⚠️)`
       );
     });
+
+    if (summary.estimatedCount > 0) {
+      console.log(
+        "\n⚠️ NOTE: Some token counts are estimated. Enable stream_options.include_usage for 100% accuracy."
+      );
+    }
 
     console.log("=".repeat(60));
   }
@@ -276,8 +304,24 @@ export function extractTokenUsage(
 }
 
 /**
- * Helper function to track streaming responses
- * Note: Streaming responses don't include usage data, so we need to estimate
+ * Helper function to extract token usage from streaming response usage chunk
+ * OpenAI now provides accurate usage data in streaming responses when stream_options.include_usage is true
+ */
+export function extractStreamingTokenUsage(usageChunk: any): TokenUsage | null {
+  if (!usageChunk || !usageChunk.usage) {
+    return null;
+  }
+
+  return {
+    promptTokens: usageChunk.usage.prompt_tokens,
+    completionTokens: usageChunk.usage.completion_tokens,
+    totalTokens: usageChunk.usage.total_tokens,
+  };
+}
+
+/**
+ * Helper function to track streaming responses (DEPRECATED - use extractStreamingTokenUsage instead)
+ * Note: This is kept for backwards compatibility but should not be used
  */
 export function estimateTokenUsage(
   inputText: string,
@@ -290,7 +334,7 @@ export function estimateTokenUsage(
   const estimatedOutputTokens = Math.ceil(outputText.length / 4);
 
   console.log(
-    "⚠️ Estimating token usage for streaming response (may not be perfectly accurate)"
+    "⚠️ DEPRECATED: Using token estimation. Enable stream_options.include_usage for accurate tracking."
   );
 
   return {
