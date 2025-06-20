@@ -47,7 +47,7 @@ export const stage0AColdProspect = setup({
       },
       meta: {
         prompt:
-          "Help the user create a warm-up message for their prospect. When they're ready to generate the message, you MUST call the generateWarmupMessage function.",
+          "Starting with a new cold prospect. NEXT STEP: If the user clearly wants to generate a message (using words like 'generate', 'create', 'make', 'now', etc.), immediately call generateWarmupMessage function. If they're just greeting or unclear, ask if they want you to generate a warm-up message.",
         allowedTools: ["generateWarmupMessage"],
       },
     },
@@ -73,7 +73,7 @@ export const stage0AColdProspect = setup({
       },
       meta: {
         prompt:
-          "Collect the prospect's response. When the user mentions the prospect responded/replied/answered, you MUST call the collectFeedback function. The function will automatically classify the feedback and transition to the appropriate next state.",
+          "A message has been sent to the prospect. NEXT STEP: Ask if the prospect has responded yet. When the user mentions the prospect responded/replied/answered, immediately call collectFeedback function. If the user already provided the exact response/reply in their message (e.g., 'John replied: Not interested right now'), include that as the feedback parameter. If they just mentioned a response without details (e.g., 'He replied.'), call collectFeedback without parameters to open the input modal.",
         allowedTools: ["collectFeedback"],
       },
     },
@@ -85,7 +85,7 @@ export const stage0AColdProspect = setup({
       },
       meta: {
         prompt:
-          "Create a contextual message to keep the prospect engaged. When ready to generate the message, you MUST call the generateContextualMessage function.",
+          "The prospect responded positively but didn't ask about the business yet. NEXT STEP: IMMEDIATELY call generateContextualMessage function. You are in this state because a contextual message is needed - don't ask permission, just generate it.",
         allowedTools: ["generateContextualMessage"],
       },
     },
@@ -98,7 +98,7 @@ export const stage0AColdProspect = setup({
       },
       meta: {
         prompt:
-          "Create a follow-up message for the unresponsive prospect. When ready to generate the message, you MUST call the generateFollowUpMessage function.",
+          "The prospect hasn't responded to the previous message. NEXT STEP: IMMEDIATELY call generateFollowUpMessage function. You are in this state because a follow-up is needed - don't ask permission, just generate it.",
         allowedTools: ["generateFollowUpMessage"],
       },
     },
@@ -110,7 +110,7 @@ export const stage0AColdProspect = setup({
       },
       meta: {
         prompt:
-          "The prospect has shown interest! You MUST call the moveToStage1 function to advance them to the next stage.",
+          "Great news! The prospect has shown interest in the business. NEXT STEP: IMMEDIATELY call moveToStage1 function. You are in this state because the prospect is ready for Stage 1 - don't ask permission, just move them.",
         allowedTools: ["moveToStage1"],
       },
     },
@@ -122,7 +122,7 @@ export const stage0AColdProspect = setup({
       },
       meta: {
         prompt:
-          "This prospect needs to be archived. You MUST call the archiveProspect function to archive them.",
+          "This prospect isn't responding positively or has been unresponsive. NEXT STEP: IMMEDIATELY call archiveProspect function. You are in this state because the prospect should be archived - don't ask permission, just archive them.",
         allowedTools: ["archiveProspect"],
       },
     },

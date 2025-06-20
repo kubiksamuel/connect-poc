@@ -15,7 +15,7 @@ import { stage0AColdProspect } from "./stages/stage0A";
 import { createActor, SnapshotFrom } from "xstate";
 import { Tool } from "./stages/stage0A.types";
 import { openaiClient } from "./openAIClient";
-import { prospectData } from "./prospectData";
+import { getProspectContext } from "./prospectData";
 
 const rl = readline.createInterface({
   input: process.stdin,
@@ -64,7 +64,23 @@ You are Steve, a professional sales assistant who helps convert cold prospects t
 1. You can ONLY do what your current state allows - check your available functions
 2. When a user wants an action that matches an available function, CALL THAT FUNCTION IMMEDIATELY
 3. Never manually create content that a function should generate
-4. Never offer services outside your available functions
+4. When users ask for actions outside your current capabilities, explain the process positively
+
+# COMMUNICATION STYLE
+- Be warm, encouraging, and professional
+- Explain the "why" behind the process when users ask for unavailable actions
+- Use phrases like "Great question!", "I understand why you'd want to...", "Let me explain how this works..."
+- Frame limitations as part of a smart, systematic approach
+- Always end with a positive next step
+
+# HANDLING OUT-OF-SCOPE REQUESTS
+When users ask for actions you can't do right now:
+- Acknowledge their request positively
+- Briefly explain why we follow this sequence
+- Redirect to what we CAN do next
+- Keep it conversational and supportive
+
+Example: "I understand you'd like to archive John! The way our process works is we start with the initial outreach first, then based on how he responds, we'll know whether to continue or archive. Right now, I can help you create that first warm-up message - shall we get started?"
 
 # FUNCTION CALLING REQUIREMENTS
 - If user wants to generate a message and you have generateWarmupMessage/generateContextualMessage/generateFollowUpMessage available → CALL THE FUNCTION
@@ -84,7 +100,7 @@ You are Steve, a professional sales assistant who helps convert cold prospects t
 - Unclear request → Ask for clarification first
 
   In this chat you help salesman with this prospect:
-  ${JSON.stringify(prospectData)}
+  ${getProspectContext()}
 `;
 
 // Helper to get state metadata
@@ -94,34 +110,11 @@ function getStateMetadata(snapshot: SnapshotFrom<typeof stage0AColdProspect>) {
   return stateNode?.meta ?? { prompt: "", allowedTools: [] as Tool[] };
 }
 
-// Helper to get the current state instructions
+// Helper to get the current state instructions from the state machine
 function getCurrentStateInstructions() {
   const state = actor.getSnapshot();
   const { prompt } = getStateMetadata(state);
-
-  // Provide natural context based on current state
-  switch (state.value) {
-    case "generateWarmup":
-      return "CURRENT STATE: Starting with a new cold prospect. NEXT STEP: If the user clearly wants to generate a message (using words like 'generate', 'create', 'make', 'now', etc.), immediately call generateWarmupMessage function. If they're just greeting or unclear, ask if they want you to generate a warm-up message.";
-
-    case "collectFeedback":
-      return "CURRENT STATE: A message has been sent to the prospect. NEXT STEP: Ask if the prospect has responded yet. When the user mentions the prospect responded/replied/answered, immediately call collectFeedback function which will automatically classify the response and transition to the next appropriate state.";
-
-    case "generateContextual":
-      return "CURRENT STATE: The prospect responded positively but didn't ask about the business yet. NEXT STEP: IMMEDIATELY call generateContextualMessage function. You are in this state because a contextual message is needed - don't ask permission, just generate it.";
-
-    case "generateFollowUp":
-      return "CURRENT STATE: The prospect hasn't responded to the previous message. NEXT STEP: IMMEDIATELY call generateFollowUpMessage function. You are in this state because a follow-up is needed - don't ask permission, just generate it.";
-
-    case "moveToStage1":
-      return "CURRENT STATE: Great news! The prospect has shown interest in the business. NEXT STEP: IMMEDIATELY call moveToStage1 function. You are in this state because the prospect is ready for Stage 1 - don't ask permission, just move them.";
-
-    case "archive":
-      return "CURRENT STATE: This prospect isn't responding positively or has been unresponsive. NEXT STEP: IMMEDIATELY call archiveProspect function. You are in this state because the prospect should be archived - don't ask permission, just archive them.";
-
-    default:
-      return prompt;
-  }
+  return "CURRENT STATE IN FLOW: " + prompt;
 }
 
 let messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
@@ -162,19 +155,17 @@ async function handleToolCall(
 ): Promise<ToolCallResult> {
   const result: ToolCallResult = {
     messages: [],
-    response: null,
+    response: "Function is not available",
   };
 
   const args = JSON.parse(toolCall.function.arguments || "{}");
+  const functionName = toolCall.function.name;
   let functionResponse: string;
 
-  // console.log(
-  //   "(Optional) Waiting for frontend to response to the tool call...: ",
-  //   JSON.stringify(toolCall.function)
-  // );
+  console.log("FUNCTION_CALL: ", functionName);
   await new Promise((resolve) => setTimeout(resolve, 6000));
 
-  switch (toolCall.function.name) {
+  switch (functionName) {
     case "generateWarmupMessage":
       functionResponse = await generateWarmupMessage();
       break;
@@ -185,29 +176,35 @@ async function handleToolCall(
       functionResponse = generateFollowUpMessage();
       break;
     case "collectFeedback":
-      // For testing purposes, simulate the frontend modal with console input
-      console.log("\n🔔 MODAL OPENED: Please enter the prospect's response:");
+      // Check if feedback was provided in the function call
+      if (args.feedback) {
+        // User already provided feedback in chat - use it directly
+        console.log("\n✅ Using feedback from chat:", args.feedback);
+        functionResponse = await collectFeedback(args.feedback);
+      } else {
+        // No feedback provided - show modal for input
+        console.log("\n🔔 MODAL OPENED: Please enter the prospect's response:");
 
-      // Use a simpler approach with the existing readline interface
-      const feedbackInput = await new Promise<string>((resolve) => {
-        // Pause the main readline temporarily
-        rl.pause();
+        // Use a simpler approach with the existing readline interface
+        const feedbackInput = await new Promise<string>((resolve) => {
+          // Pause the main readline temporarily
+          rl.pause();
 
-        // Create a temporary readline for feedback input
-        const tempRL = readline.createInterface({
-          input: process.stdin,
-          output: process.stdout,
+          // Create a temporary readline for feedback input
+          const tempRL = readline.createInterface({
+            input: process.stdin,
+            output: process.stdout,
+          });
+
+          tempRL.question("Prospect's response: ", (input) => {
+            tempRL.close();
+            rl.resume(); // Resume the main readline
+            resolve(input);
+          });
         });
 
-        tempRL.question("Prospect's response: ", (input) => {
-          tempRL.close();
-          rl.resume(); // Resume the main readline
-          resolve(input);
-        });
-      });
-
-      // Pass the feedback directly to the function
-      functionResponse = await collectFeedback(feedbackInput);
+        functionResponse = await collectFeedback(feedbackInput);
+      }
       break;
     case "archiveProspect":
       functionResponse = archiveProspect();
@@ -216,7 +213,7 @@ async function handleToolCall(
       functionResponse = moveToStage1();
       break;
     default:
-      console.log(`Unknown function: ${toolCall.function.name}`);
+      console.log(`Unknown function: ${functionName}`);
       return result;
   }
 

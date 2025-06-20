@@ -1,5 +1,5 @@
 import { sendRequestToOpenAi } from "./openAiRequest";
-import { MAX_FOLLOW_UP_ATTEMPTS, prospectData } from "./prospectData";
+import { MAX_FOLLOW_UP_ATTEMPTS, getProspectContext } from "./prospectData";
 
 // Global prospect ID that will be set when chat starts
 export let CURRENT_PROSPECT_ID: string = "";
@@ -20,15 +20,13 @@ export type MessageResponse = {
 };
 
 export async function generateWarmupMessage(): Promise<string> {
-  console.log("FUNCTION_CALL: Generating warmup message");
-
   const messages = [
     {
       role: "system" as const,
       content: `You are a sales message expert.
        Generate a personalized, professional warm-up message for cold outreach.
-       Prospect data: ${JSON.stringify(prospectData)}
-       Generate only message, no other text.`,
+       Information about the prospect: ${getProspectContext()}
+       Generate only the message, no other text.`,
     },
   ];
 
@@ -50,15 +48,13 @@ export async function generateWarmupMessage(): Promise<string> {
 
 export async function generateContextualMessage(): Promise<string> {
   // In a real implementation, this would generate a contextual message to nudge the prospect
-  console.log("FUNCTION_CALL: Generating contextual message");
-
   const messages = [
     {
       role: "system" as const,
       content: `You are a sales message expert.
        Generate a personalized, professional contextual message for cold outreach.
-       Prospect data: ${JSON.stringify(prospectData)}
-       Generate only message, no other text.`,
+       Information about the prospect: ${getProspectContext()}
+       Generate only the message, no other text.`,
     },
   ];
 
@@ -80,8 +76,6 @@ export async function generateContextualMessage(): Promise<string> {
 
 export function generateFollowUpMessage(): string {
   // In a real implementation, this would generate a follow-up message
-  console.log("FUNCTION_CALL: Generating follow-up message");
-
   // Check if we've reached the maximum follow-up attempts
   if (stateActor) {
     const currentState = stateActor.getSnapshot();
@@ -124,7 +118,6 @@ export function generateFollowUpMessage(): string {
 
 export function archiveProspect(): string {
   // In a real implementation, this would archive the prospect in the CRM
-  console.log("FUNCTION_CALL: Archiving prospect");
   if (stateActor) {
     stateActor.send({ type: "PROSPECT_ARCHIVED" });
   }
@@ -135,8 +128,6 @@ export function archiveProspect(): string {
 
 export function moveToStage1(): string {
   // In a real implementation, this would move the prospect to Stage 1 in the CRM
-  console.log("FUNCTION_CALL: Moving to stage 1");
-
   if (stateActor) {
     stateActor.send({ type: "STAGE_1_REACHED" });
   }
@@ -147,7 +138,6 @@ export function moveToStage1(): string {
 
 export async function collectFeedback(feedback?: string): Promise<string> {
   // In a real implementation, this would trigger a modal on the frontend to collect prospect's feedback
-  console.log("FUNCTION_CALL: Triggering feedback collection modal");
 
   if (!feedback) {
     return "Error: No feedback provided";
